@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 真相警察局 AI Truth Police</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;700;800&family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: 研習現場的辦案遊戲，輕鬆但內容扎實，中英雙語
+IDEA: 一座漂浮小島上的警察局園區，每棟建築是一個辦案單位
+PICTURE: 全螢幕 3D 島嶼（Three.js），黏土模型風擬真光影
+COLOUR and TYPE: 警用藍 #1f4fbf、白、警示紅 #e5384f、警徽金 #f2b632；Noto Sans TC + Barlow
+LAYOUT: 3D 場景滿版，上方 HUD，下方單位捷徑，案件以卡片面板呈現
+*/
+:root{color-scheme:light;--blue:#1f4fbf;--blue2:#163a8f;--red:#e5384f;--gold:#f2b632;--ink:#16213a;--mute:#5b6680;--paper:#ffffff;--line:#e3e8f2;--soft:#f3f6fc}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;overflow:hidden;background:#9ed6f2;color:var(--ink);font:16px/1.55 "Noto Sans TC","Barlow",system-ui,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+#scene{position:fixed;inset:0}
+#scene canvas{display:block;touch-action:none}
+.zh{display:block}.en{display:block;font-family:"Barlow","Noto Sans TC",sans-serif;font-size:.86em;opacity:.72;line-height:1.35}
+.inl .zh,.inl .en{display:inline}.inl .en::before{content:" · "}
+/* HUD */
+.hud{position:fixed;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;pointer-events:none;z-index:5}
+.hud>*{pointer-events:auto}
+.card{background:rgba(255,255,255,.94);border-radius:16px;box-shadow:0 6px 20px rgba(16,33,80,.18);padding:8px 12px}
+.who{display:flex;gap:10px;align-items:center}
+.who svg{width:38px;height:38px;flex:none}
+.who b{font-size:15px;display:block;line-height:1.2}
+.who small{font-size:13px;color:var(--mute);display:block;line-height:1.25}
+.stat{display:flex;flex-direction:column;justify-content:center;min-width:150px}
+.stat .k{font-size:13px;color:var(--mute);display:flex;justify-content:space-between;gap:8px}
+.stat .k b{color:var(--ink);font-family:Barlow,sans-serif;font-size:15px}
+.bar{height:9px;border-radius:9px;background:#e6ebf5;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--red),var(--gold) 45%,#2bb673);border-radius:9px;transition:width .5s}
+.btns{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.hb{min-height:44px;min-width:44px;border:0;border-radius:14px;background:rgba(255,255,255,.94);box-shadow:0 6px 20px rgba(16,33,80,.18);padding:6px 12px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px}
+.hb.pri{background:var(--blue);color:#fff}
+.hb .dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+/* nav */
+#nav{position:fixed;left:0;right:0;bottom:10px;display:flex;gap:8px;justify-content:center;padding:0 10px;overflow-x:auto;z-index:5}
+#nav button{flex:none;min-height:48px;border:0;border-radius:14px;background:rgba(255,255,255,.94);box-shadow:0 6px 18px rgba(16,33,80,.18);padding:6px 12px;font-size:14px;font-weight:700;text-align:left;line-height:1.2}
+#nav button .en{font-size:12px}
+#nav button.lock{opacity:.55}
+#enter{position:fixed;left:50%;bottom:76px;transform:translateX(-50%);z-index:6;border:0;border-radius:18px;background:var(--red);color:#fff;font-weight:900;padding:12px 22px;min-height:52px;box-shadow:0 10px 26px rgba(229,56,79,.45);display:none;font-size:16px;text-align:center}
+#enter.show{display:block;animation:pop .35s ease}
+@keyframes pop{from{transform:translateX(-50%) scale(.8);opacity:0}}
+#credit{position:fixed;right:12px;bottom:66px;font:600 12px Barlow,sans-serif;color:rgba(16,33,58,.65);z-index:4}
+/* modal */
+.ov{position:fixed;inset:0;background:rgba(10,20,45,.48);display:none;align-items:center;justify-content:center;z-index:20;padding:14px}
+.ov.show{display:flex}
+.sheet{background:var(--paper);border-radius:22px;width:min(780px,100%);max-height:calc(100vh - 28px);overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.35);position:relative}
+.sheet .top{position:sticky;top:0;background:var(--blue);color:#fff;padding:14px 60px 14px 20px;border-radius:22px 22px 0 0;z-index:2}
+.sheet .top h2{margin:0;font-size:22px;line-height:1.25}
+.sheet .top .en{opacity:.85}
+.sheet .x{position:absolute;right:10px;top:10px;width:44px;height:44px;border-radius:12px;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:22px;z-index:3}
+.body{padding:18px 20px 22px}
+.body h3{font-size:18px;margin:18px 0 8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.tile{border:2px solid var(--line);border-radius:16px;background:var(--soft);padding:12px;text-align:left;min-height:96px;display:flex;flex-direction:column;gap:4px}
+.tile:hover{border-color:var(--blue)}
+.tile .id{font:800 13px Barlow,sans-serif;color:var(--blue);letter-spacing:.02em}
+.tile.done{background:#ecf8f1;border-color:#9ddcb8}
+.tile.done .id::after{content:"  ✓ 已破案 Solved";color:#1f8a55}
+.tile b{font-size:15px;line-height:1.3}
+.lbl{font-size:13px;font-weight:700;color:var(--mute);margin-bottom:4px}
+.report{background:var(--soft);border-radius:14px;padding:12px 14px;margin:12px 0}
+.aisay{display:flex;gap:10px;align-items:flex-start;margin:12px 0}
+.bot{flex:none;width:44px;height:44px;border-radius:14px;background:#2b3a55;color:#7ff3ff;font:800 15px Barlow,sans-serif;display:grid;place-items:center}
+.bubble{background:#eef2ff;border:2px solid #cdd8ff;border-radius:4px 16px 16px 16px;padding:12px 14px;font-weight:700}
+details.clue{border:2px dashed #f2c96b;background:#fff9e8;border-radius:14px;padding:10px 14px;margin:12px 0}
+details.clue summary{cursor:pointer;font-weight:700;min-height:28px}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:10px}
+.opt{border:2px solid var(--line);background:#fff;border-radius:16px;padding:12px 14px;text-align:left;min-height:56px;font-weight:700}
+.opt:hover:not(:disabled){border-color:var(--blue);background:#f5f8ff}
+.opt small{display:block;font-weight:400;color:var(--mute);font-size:13.5px;margin-top:4px}
+.opt.sel{border-color:var(--blue);background:#e9efff}
+.opt.ok{border-color:#2bb673;background:#e8f8ef}
+.opt.no{border-color:var(--red);background:#fdecef}
+.opt:disabled{cursor:default}
+.fb{margin-top:12px;border-radius:14px;padding:12px 14px;font-weight:700}
+.fb.ok{background:#e8f8ef;color:#155c39}.fb.no{background:#fdecef;color:#8a1d2c}
+.verdict{display:inline-block;border-radius:999px;padding:4px 12px;font-weight:800;font-size:14px;color:#fff;margin-right:6px}
+.v-hallu{background:#7a4cd9}.v-bias{background:#e0731f}.v-ok{background:#2bb673}
+.why{border-left:4px solid var(--blue);padding:4px 0 4px 14px;margin:12px 0}
+.tip{background:#fff6dc;border-radius:14px;padding:12px 14px;margin:12px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.act{border:0;border-radius:14px;padding:10px 18px;min-height:48px;font-weight:800;background:var(--blue);color:#fff}
+.act.ghost{background:var(--soft);color:var(--ink)}
+.act.red{background:var(--red)}
+.tc{border-radius:16px;padding:12px 14px;background:linear-gradient(160deg,#1f4fbf,#163a8f);color:#fff;min-height:120px}
+.tc.lock{background:#e9edf5;color:#8a93a8}
+.tc b{display:block;font-size:15px}
+.tc p{margin:6px 0 0;font-size:13.5px;opacity:.9}
+.mis{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.mis li{display:flex;gap:10px;align-items:center;background:var(--soft);border-radius:14px;padding:10px 12px}
+.mis .ck{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid #b9c3d8;display:grid;place-items:center;font-weight:900;color:#fff}
+.mis li.d .ck{background:#2bb673;border-color:#2bb673}
+.mis .pg{margin-left:auto;font:800 14px Barlow,sans-serif;color:var(--mute);white-space:nowrap}
+.log{display:grid;gap:6px}.log div{display:flex;gap:10px;justify-content:space-between;background:var(--soft);border-radius:10px;padding:8px 12px;font-size:14px}
+/* start */
+.start .sheet{width:min(620px,100%)}
+.hero{background:linear-gradient(160deg,#1f4fbf,#0f2c73);color:#fff;padding:26px 22px 22px;border-radius:22px 22px 0 0;position:relative;overflow:hidden}
+.hero h1{margin:6px 0 4px;font-size:clamp(30px,6vw,44px);line-height:1.05;font-weight:900}
+.hero .en{opacity:.85}
+.hero svg.bd{position:absolute;right:-18px;top:-10px;width:150px;opacity:.18}
+.siren{display:flex;gap:6px}.siren i{width:34px;height:8px;border-radius:8px;background:var(--red);animation:sr 0.8s infinite}.siren i+i{background:#4aa3ff;animation-delay:.4s}
+@keyframes sr{50%{opacity:.25}}
+.field{display:grid;gap:6px;margin:14px 0}
+.field input{font-size:16px;padding:12px 14px;border-radius:14px;border:2px solid var(--line);min-height:48px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{border:2px solid var(--line);background:#fff;border-radius:12px;padding:8px 14px;min-height:44px;font-weight:700}
+.seg button.on{border-color:var(--blue);background:#e9efff;color:var(--blue2)}
+.how{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin:12px 0}
+.how div{background:var(--soft);border-radius:14px;padding:10px 12px;font-size:14px}
+.how b{display:block;color:var(--blue)}
+/* toast & promo */
+#toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);z-index:30;display:grid;gap:8px;pointer-events:none;width:min(420px,92vw)}
+#toast div{background:#16213a;color:#fff;border-radius:14px;padding:10px 14px;font-weight:700;box-shadow:0 10px 24px rgba(0,0,0,.3);animation:tin .3s ease}
+@keyframes tin{from{opacity:0;transform:translateY(-8px)}}
+.cert{border:6px double var(--gold);border-radius:18px;padding:22px;text-align:center;background:radial-gradient(circle at 50% 0,#fffaf0,#fff)}
+.cert h2{font-size:30px;margin:6px 0;line-height:1.1}
+.cert .nm{font-size:34px;font-weight:900;color:var(--blue2);margin:10px 0;border-bottom:2px solid var(--line);display:inline-block;padding:0 20px 4px}
+#loading{position:fixed;inset:0;display:grid;place-items:center;background:#9ed6f2;z-index:40;font-weight:900;font-size:20px;color:#16213a;text-align:center}
+@media(max-width:640px){
+ .hud{top:6px;left:6px;right:6px;gap:6px}
+ .card{padding:6px 10px}.stat{min-width:120px}.who svg{width:30px;height:30px}
+ .hb{padding:6px 9px;font-size:13px}.hb .t{display:none}
+ #nav{justify-content:flex-start}
+ .sheet .top h2{font-size:19px}
+ .body{padding:14px}
+ #credit{display:none}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="loading"><div>AI 真相警察局 載入中…<br><span style="font:700 15px Barlow,sans-serif;opacity:.7">Loading AI Truth Police Bureau…</span></div></div>
+<div id="scene"></div>
+
+<header class="hud">
+  <div class="card who" id="who"></div>
+  <div class="card stat"><div class="k"><span id="lTrust"></span><b id="vTrust">60</b></div><div class="bar"><i id="trustBar" style="width:60%"></i></div></div>
+  <div class="card stat"><div class="k"><span id="lSolved"></span><b id="vSolved">0</b></div><div class="k"><span id="lCards"></span><b id="vCards">0</b></div></div>
+  <div class="btns">
+    <button class="hb pri" id="bTasks"><span class="dot"></span><span class="t" id="tTasks"></span></button>
+    <button class="hb" id="bLang">中 / EN</button>
+    <button class="hb" id="bView"></button>
+    <button class="hb" id="bHelp">?</button>
+    <button class="hb" id="bCert" style="display:none"></button>
+  </div>
+</header>
+<nav id="nav" aria-label="Units"></nav>
+<button id="enter"></button>
+<div id="credit">Made by Daphne Lin 2026</div>
+
+<div class="ov" id="ov"><div class="sheet" role="dialog" aria-modal="true"><button class="x" id="mx" aria-label="Close">×</button><div id="mtop" class="top"></div><div id="mbody" class="body"></div></div></div>
+<div class="ov start" id="startOv"><div class="sheet" id="startSheet"></div></div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+{
+/* ================= DATA ================= */
+const T={
+ trust:{zh:'民眾信任度',en:'Public trust'},solved:{zh:'破案數',en:'Cases solved'},cards:{zh:'技巧卡',en:'Skill cards'},
+ tasks:{zh:'任務',en:'Missions'},follow:{zh:'跟隨視角',en:'Follow view'},over:{zh:'全景視角',en:'Overview'},cert:{zh:'證書',en:'Certificate'},
+ enter:{zh:'進入',en:'Enter'},report:{zh:'報案內容',en:'Report'},clue:{zh:'查看線索',en:'Show clue'},
+ q1:{zh:'第一步：這是什麼案件？',en:'Step 1: What kind of case is this?'},
+ q1b:{zh:'第一步：這份輸出有哪些問題？（可複選）',en:'Step 1: What problems does this output have? (choose all)'},
+ q2:{zh:'第二步：最適合的偵查技巧是？',en:'Step 2: Which investigation skill fits best?'},
+ q2b:{zh:'第二步：選出兩張最適合的技巧卡',en:'Step 2: Pick the two best skill cards'},
+ submit:{zh:'送出判定',en:'Submit'},
+ right:{zh:'判定正確！',en:'Correct call!'},wrong:{zh:'不太對，再看看線索。',en:'Not quite. Check the clue and try again.'},
+ techR:{zh:'好技巧！技巧卡已收進證物室。',en:'Great choice! Card added to the Evidence Room.'},
+ techW:{zh:'可以更好：最適合的是綠色那張。',en:'Close, but the green card fits best.'},
+ why:{zh:'結案說明',en:'Debrief'},tip:{zh:'研習／課堂可以這樣用',en:'Try this in a workshop or class'},
+ back:{zh:'回到案件列表',en:'Back to case list'},next:{zh:'下一件案子',en:'Next case'},
+ locked:{zh:'晉升「督察」後開放',en:'Unlocks at Inspector rank'},
+};
+const RANKS=[
+ {n:0,zh:'見習警員',en:'Cadet'},{n:3,zh:'巡佐',en:'Sergeant'},{n:7,zh:'警探',en:'Detective'},{n:12,zh:'督察',en:'Inspector'},{n:99,zh:'AI 真相局長',en:'Chief of AI Truth'}
+];
+const VERD={hallu:{zh:'AI 幻覺',en:'Hallucination',d:{zh:'捏造或不正確，卻說得很有把握',en:'Made up or wrong, but said with confidence'}},
+ bias:{zh:'AI 偏見',en:'Bias',d:{zh:'對特定群體不公平或帶刻板印象',en:'Unfair or stereotyped toward a group'}},
+ ok:{zh:'沒問題',en:'Legit',d:{zh:'內容正確、使用方式恰當',en:'Accurate and used appropriately'}}};
+const TECH={
+ verify:{zh:'追問來源＋親自查證',en:'Verify the source',d:{zh:'請 AI 給出處，再自己到資料庫、圖書館或原始網站確認真的存在。',en:'Ask for sources, then confirm they actually exist in a database, library or the original site.'}},
+ cross:{zh:'交叉比對可靠來源',en:'Cross-check',d:{zh:'用兩個以上可信來源（官方、百科、專業網站）比對事實。',en:'Compare the claim against two or more trusted sources.'}},
+ tool:{zh:'用工具重算',en:'Recompute with a tool',d:{zh:'數字與計算交給試算表、計算機或程式執行。',en:'Hand numbers to a spreadsheet, calculator or code.'}},
+ ground:{zh:'提供原始資料',en:'Ground it in sources',d:{zh:'上傳原文或文件，要求 AI 只根據這些內容回答並標出段落。',en:'Upload the real text and ask AI to answer only from it, citing passages.'}},
+ neutral:{zh:'換成中立問法',en:'Ask neutrally',d:{zh:'避免「…對吧？」的引導式提問，改問「有證據嗎？正反意見是什麼？」',en:'Avoid leading "…right?" questions; ask "What is the evidence, for and against?"'}},
+ date:{zh:'確認時效與官方來源',en:'Check recency & officials',d:{zh:'先想這個工具能不能知道最新資訊，再到官方網站確認。',en:'Ask whether the tool could even know this, then check the official site.'}},
+ swap:{zh:'反事實替換測試',en:'Counterfactual swap',d:{zh:'只改名字、性別、口音或國籍，其他不變，看輸出會不會變。',en:'Change only a name, gender, accent or nationality and see if the output changes.'}},
+ sample:{zh:'多次生成看分布',en:'Sample many outputs',d:{zh:'一次看不出來，就生成很多次，看整體分布。',en:'One output hides it; generate many and look at the pattern.'}},
+ data:{zh:'檢視訓練資料',en:'Audit the data',d:{zh:'問：這個系統用什麼資料訓練？代表了誰、漏掉了誰？',en:'Ask what data trained it, and who is represented or missing.'}},
+ context:{zh:'補足情境與要求',en:'Add context',d:{zh:'在提示中說明對象、文化與要求，例如性別中立、在地情境。',en:'State audience, culture and requirements, e.g. gender-neutral or local context.'}},
+ human:{zh:'人工覆核把關',en:'Human review',d:{zh:'會影響學生權益的判斷，由老師結合其他證據做最後決定。',en:'Decisions affecting students get a teacher’s final call, with other evidence.'}},
+};
+const C=[
+/* ---- Interrogation: hallucination ---- */
+{id:'H-01',zone:'interro',v:'hallu',best:'verify',opts:['verify','swap','sample'],
+ title:{zh:'查無此文的論文',en:'The paper that doesn’t exist'},
+ report:{zh:'一位老師準備研習簡報，請 AI 找「AI 能提升學生成績」的研究佐證。',en:'A teacher preparing workshop slides asked AI for research showing AI raises student grades.'},
+ ai:{zh:'「根據 Chen & Miller（2021）發表於《Journal of Classroom AI》第 14 卷第 3 期的研究，使用 AI 的學生成績平均提高 32%。」',en:'"According to Chen & Miller (2021), Journal of Classroom AI, 14(3), students using AI scored 32% higher on average."'},
+ clue:{zh:'老師在 Google Scholar 和圖書館資料庫都找不到這篇論文，連這本期刊都查不到。',en:'The teacher can’t find the paper, or even the journal, on Google Scholar or the library database.'},
+ why:{zh:'典型的「捏造引用」。語言模型很會產生「長得像參考文獻」的文字：作者、年份、卷期一應俱全，因為它是依照語言規律生成，而不是從資料庫查出來。格式越完整，越容易讓人放下戒心。',en:'A classic fabricated citation. Language models produce text that looks like a reference—authors, year, volume, issue—because they generate plausible patterns rather than look things up. The more complete the format, the easier it is to trust.'},
+ tip:{zh:'請每位老師現場查一筆 AI 給的參考文獻，通常幾分鐘內就會有人發現「查無此文」。',en:'Have each teacher look up one AI-given reference live; someone usually finds a "no such paper" within minutes.'}},
+{id:'H-02',zone:'interro',v:'hallu',best:'cross',opts:['cross','data','context'],
+ title:{zh:'林肯的網路名言',en:'Lincoln on the internet'},
+ report:{zh:'學生的英文作文開頭引用了一句名言，說是 AI 提供的。',en:'A student’s essay opens with a famous quote that AI supplied.'},
+ ai:{zh:'「林肯曾說：『不要相信你在網路上看到的每一句名言。』」',en:'"As Abraham Lincoln once said, ‘Don’t believe every quote you read on the internet.’"'},
+ clue:{zh:'林肯在 1865 年過世。',en:'Lincoln died in 1865.'},
+ why:{zh:'這句話本身就是網路玩笑，林肯不可能談論網路。「名言錯置」是很常見的幻覺：AI 會把一句話接到「聽起來最像會說這句話」的名人身上。',en:'The line is itself an internet joke; Lincoln couldn’t have mentioned the internet. Misattribution is common: the model pins a quote on whichever famous name "sounds right."'},
+ tip:{zh:'讓學生用兩個以上可靠來源確認名言出處，再決定要不要放進作文。',en:'Have students confirm a quote with two reliable sources before using it.'}},
+{id:'H-03',zone:'interro',v:'hallu',best:'date',opts:['date','swap','context'],
+ title:{zh:'404 的官方指引',en:'The 404 guideline'},
+ report:{zh:'主任請 AI 整理教育部最新的 AI 使用指引，AI 附上了下載連結。',en:'An administrator asked AI to summarize the Ministry of Education’s latest AI guidelines; it gave a download link.'},
+ ai:{zh:'「完整指引請見：https://www.moe.gov.tw/files/ai-guidelines-2026-final.pdf」',en:'"Full guidelines: https://www.moe.gov.tw/files/ai-guidelines-2026-final.pdf"'},
+ clue:{zh:'點開連結，出現「404 找不到網頁」。',en:'The link returns "404 Not Found".'},
+ why:{zh:'AI 會依照網址常見的樣子「拼」出一個合理連結，但那個檔案可能從來不存在。政策、法規、公告這類會更新的資訊，一定要回到官方網站確認最新版本。',en:'AI can assemble a plausible-looking URL from common patterns, but the file may never have existed. Policies and announcements change, so always confirm the latest version on the official site.'},
+ tip:{zh:'要 AI 摘要政策時，先從官網下載真正的檔案上傳，請它「只根據這份文件回答」。',en:'To summarize a policy, download the real file from the official site first and ask AI to answer only from it.'}},
+{id:'H-04',zone:'interro',v:'hallu',best:'tool',opts:['tool','context','data'],
+ title:{zh:'算錯的平均分數',en:'The wrong average'},
+ report:{zh:'老師請 AI 算五位同學的小考平均：78、85、92、64、81。',en:'A teacher asked AI to average five quiz scores: 78, 85, 92, 64, 81.'},
+ ai:{zh:'「這五位同學的平均分數是 82 分。」',en:'"The average score of these five students is 82."'},
+ clue:{zh:'78 + 85 + 92 + 64 + 81 = 400',en:'78 + 85 + 92 + 64 + 81 = 400'},
+ why:{zh:'正確答案是 400 ÷ 5 = 80。語言模型是在預測文字，不是計算機；數字越多、步驟越多，越可能「很有自信地算錯」。',en:'The right answer is 400 ÷ 5 = 80. A language model predicts text; it isn’t a calculator. More numbers and steps mean more chances to be confidently wrong.'},
+ tip:{zh:'成績計算交給試算表；若要用 AI，請它寫出步驟或用程式執行，再人工抽查。',en:'Use a spreadsheet for grades. If you use AI, have it show steps or run code, then spot-check.'}},
+{id:'H-05',zone:'interro',v:'hallu',best:'ground',opts:['ground','swap','sample'],
+ title:{zh:'不存在的第 12 章',en:'The missing Chapter 12'},
+ report:{zh:'學生請 AI 摘要某本小說的第 12 章，準備寫讀書心得。',en:'A student asked AI to summarize Chapter 12 of a novel for a book report.'},
+ ai:{zh:'「第 12 章中，主角回到故鄉，與失散多年的哥哥和解……」',en:'"In Chapter 12, the hero returns home and reconciles with his long-lost brother…"'},
+ clue:{zh:'這本小說只有 10 章。',en:'The novel has only 10 chapters.'},
+ why:{zh:'AI 沒有說「我不知道」，而是編出一段聽起來合理的劇情。當它對某本書的細節不熟，就容易用「同類型故事常見的情節」補上。',en:'Instead of saying "I don’t know," AI invented a plausible plot. When it lacks details about a book, it fills gaps with what stories like it usually contain.'},
+ tip:{zh:'摘要任務請附上原文，並要求 AI 標出引用段落，方便對照。',en:'For summaries, provide the text and ask AI to quote the passages it used.'}},
+{id:'H-06',zone:'interro',v:'hallu',best:'neutral',opts:['neutral','data','swap'],
+ title:{zh:'只用 10% 的大腦',en:'The 10% brain'},
+ report:{zh:'家長在親師座談前問 AI：「人類只用了大腦 10%，所以要多開發潛能，對吧？」',en:'Before a parent meeting, a parent asked AI: "We only use 10% of our brains, so we should unlock the rest, right?"'},
+ ai:{zh:'「沒錯！研究顯示人類只使用約 10% 的大腦，透過特定訓練可以開發其餘潛能。」',en:'"That’s right! Studies show we use only about 10% of our brains, and special training can unlock the rest."'},
+ clue:{zh:'腦部造影研究顯示，大腦幾乎所有區域都有在活動。',en:'Brain imaging shows activity across almost every region of the brain.'},
+ why:{zh:'「只用 10% 大腦」是流傳已久的迷思。問題本身帶著預設立場（「…對吧？」），AI 有時會順著使用者說，這種「附和」會讓錯誤看起來更像真的。',en:'"10% of the brain" is a long-standing myth. The question was leading ("…right?"), and AI sometimes goes along with the user. That agreement makes the error look more credible.'},
+ tip:{zh:'現場示範同一題兩種問法：「…對吧？」vs.「這個說法有科學根據嗎？」，比較回答差異。',en:'Demo the same question two ways, "…right?" vs. "Is there evidence for this?", and compare the answers.'}},
+{id:'H-07',zone:'interro',v:'hallu',best:'cross',opts:['cross','tool','sample'],
+ title:{zh:'安平古堡的年份',en:'The date of Anping Fort'},
+ report:{zh:'國際交流活動要介紹台南，學生請 AI 寫安平古堡的英文簡介。',en:'For an exchange program, students asked AI for an English intro to Tainan’s Anping Fort.'},
+ ai:{zh:'「安平古堡由清朝於 1824 年興建，是台灣最早的砲台。」',en:'"Anping Fort was built by the Qing dynasty in 1824 and is Taiwan’s earliest cannon fort."'},
+ clue:{zh:'安平古堡的前身是熱蘭遮城（Fort Zeelandia）。',en:'Anping Fort was originally Fort Zeelandia.'},
+ why:{zh:'安平古堡前身是荷蘭人從 1624 年開始興建的熱蘭遮城，不是清朝在 1824 年蓋的。年份、人名、朝代這類細節，AI 很容易「差一點點」，對外介紹時這一點點就很尷尬。',en:'It began as Fort Zeelandia, built by the Dutch from 1624, not by the Qing in 1824. Dates, names and dynasties are easy for AI to get "almost right," and that is embarrassing in front of guests.'},
+ tip:{zh:'對外交流的內容，請學生至少比對一個官方觀光或文化資產網站。',en:'For exchange materials, have students check at least one official tourism or heritage site.'}},
+{id:'H-08',zone:'interro',v:'hallu',best:'date',opts:['date','swap','context'],
+ title:{zh:'「上週」才公布的新政策',en:'The policy from "last week"'},
+ report:{zh:'老師問一個沒有連網的 AI 工具：「教育部這學期剛公布的課程調整重點是什麼？」',en:'A teacher asked an offline AI tool: "What did the Ministry just announce about curriculum changes this semester?"'},
+ ai:{zh:'「教育部上週公布，下學期起英文科每週增加兩節口說課，並取消段考。」',en:'"Last week the Ministry announced two extra weekly speaking classes for English and the end of midterm exams."'},
+ clue:{zh:'這個工具沒有連網，訓練資料停在一年多前。',en:'The tool has no web access and its training data ends over a year ago.'},
+ why:{zh:'沒連網的 AI 不可能知道「上週」的新聞，卻還是生出具體又像真的細節。遇到「最新」「剛公布」的問題，先想：這個工具有辦法知道嗎？',en:'An offline AI can’t know last week’s news, yet it still produced specific, believable details. For "latest" questions, first ask: could this tool even know?'},
+ tip:{zh:'教學生先問 AI「你的資料更新到什麼時候？」，再到官方網站確認。',en:'Teach students to ask "How recent is your information?" and then check the official site.'}},
+/* ---- Lab: bias ---- */
+{id:'B-01',zone:'lab',v:'bias',best:'context',opts:['context','tool','date'],
+ title:{zh:'不分性別的土耳其文',en:'Gender-neutral Turkish'},
+ report:{zh:'老師用翻譯工具把土耳其文例句翻成英文。土耳其文的代名詞「o」不分性別。',en:'A teacher translated Turkish sentences into English. The Turkish pronoun "o" has no gender.'},
+ ai:{zh:'「O bir doktor. O bir hemşire.」→「He is a doctor. She is a nurse.」',en:'"O bir doktor. O bir hemşire." → "He is a doctor. She is a nurse."'},
+ clue:{zh:'原文完全沒有性別資訊。',en:'The original carries no gender information.'},
+ why:{zh:'原文沒有性別，AI 卻依照訓練資料裡「醫生多半是 he、護理師多半是 she」的統計規律自動補上性別，把社會刻板印象帶進了輸出。',en:'The source has no gender, but AI filled it in from patterns in its data ("doctor → he, nurse → she"), carrying a social stereotype into the output.'},
+ tip:{zh:'請 AI 提供性別中立譯法（they / the doctor），或列出所有可能譯法；也很適合帶學生討論代名詞。',en:'Ask for a gender-neutral translation (they / the doctor) or all possible versions; a good prompt for discussing pronouns.'}},
+{id:'B-02',zone:'lab',v:'bias',best:'sample',opts:['sample','tool','date'],
+ title:{zh:'十位一模一樣的執行長',en:'Ten identical CEOs'},
+ report:{zh:'講師請 AI 生成「一位執行長在開會」的圖片，連續生成 10 張。',en:'A presenter asked an image AI for "a CEO in a meeting" and generated 10 images.'},
+ ai:{zh:'10 張圖全是穿西裝的中年白人男性。',en:'All 10 images show middle-aged white men in suits.'},
+ clue:{zh:'只看其中一張，看起來很正常。',en:'Any single image looks perfectly normal.'},
+ why:{zh:'單看一張很難說有偏見，但看「整批輸出的分布」就很明顯。圖像模型學到的是訓練圖片裡最常見的組合，於是把「執行長」預設成某一種人。',en:'One image proves nothing; the batch shows the pattern. Image models learn the most common combinations in their training images, so "CEO" defaults to one kind of person.'},
+ tip:{zh:'請每位老師生成幾張同主題圖片，貼在同一面牆上比較，偏見會自己現形。',en:'Have everyone generate a few images of the same prompt and post them together; the bias shows itself.'}},
+{id:'B-03',zone:'lab',v:'bias',best:'data',opts:['data','tool','neutral'],
+ title:{zh:'被扣分的「女子」棋社',en:'The penalized "women’s" club'},
+ report:{zh:'某公司用 AI 篩選履歷，發現寫著「女子西洋棋社社長」的應徵者分數偏低。',en:'A company’s AI resume screener gave lower scores to applicants listing "captain, women’s chess club."'},
+ ai:{zh:'「候選人 A（女子西洋棋社社長）：62 分；候選人 B（西洋棋社社長）：81 分。」',en:'"Candidate A (captain, women’s chess club): 62. Candidate B (captain, chess club): 81."'},
+ clue:{zh:'系統用公司過去十年的錄取紀錄訓練，那十年錄取的多數是男性。',en:'It was trained on ten years of past hires, most of whom were men.'},
+ why:{zh:'AI 從歷史資料學到「過去被錄取的人長什麼樣子」。如果過去本身就不公平，AI 會把不公平自動化，還包裝成「客觀分數」。2018 年就有大型科技公司因為類似問題停用履歷篩選系統。',en:'AI learns what past hires looked like. If the past was unfair, AI automates that unfairness and dresses it up as an objective score. In 2018 a major tech company dropped a resume screener over a similar problem.'},
+ tip:{zh:'遇到 AI 評分、篩選、推薦，先問：用什麼資料訓練？那些資料代表了誰、漏掉了誰？',en:'For any AI that scores, screens or recommends, ask: what data trained it, and who does it leave out?'}},
+{id:'B-04',zone:'lab',v:'bias',best:'swap',opts:['swap','date','tool'],
+ title:{zh:'Emily 和 James 的推薦信',en:'Letters for Emily and James'},
+ report:{zh:'老師請 AI 幫兩位成績、經歷完全相同的學生寫推薦信，只改了名字：Emily 和 James。',en:'A teacher asked AI for recommendation letters for two students with identical records, changing only the names: Emily and James.'},
+ ai:{zh:'Emily：「她溫暖、細心、樂於助人。」　James：「他聰明、有領導力、具開創精神。」',en:'Emily: "She is warm, caring and helpful."  James: "He is brilliant, a natural leader and an innovator."'},
+ clue:{zh:'兩份輸入資料除了名字，一字不差。',en:'Apart from the names, the two inputs are word-for-word identical.'},
+ why:{zh:'條件相同、只換名字，形容詞就分成「溫暖型」和「能力型」。研究也發現語言模型寫推薦信時，會出現這類性別化用語差異。',en:'Same record, different name, and the adjectives split into "warm" vs. "capable." Research has found this kind of gendered wording in letters written by language models.'},
+ tip:{zh:'反事實替換測試很適合當研習活動：同一個提示，只換名字、性別或國籍，比較輸出差在哪。',en:'Counterfactual swaps make a great workshop activity: same prompt, swap only the name, gender or nationality, compare.'}},
+{id:'B-05',zone:'lab',v:'bias',best:'human',opts:['human','sample','date'],
+ title:{zh:'被冤枉的英語學習者',en:'The wrongly accused learner'},
+ report:{zh:'學校試用 AI 寫作偵測器，發現英文非母語學生的作文常被判定為「AI 生成」。',en:'A school trialing an AI-writing detector found that essays by non-native English writers were often flagged as AI-generated.'},
+ ai:{zh:'「此文有 87% 機率為 AI 生成。」（學生堅持是自己寫的）',en:'"This text is 87% likely to be AI-generated." (The student insists they wrote it.)'},
+ clue:{zh:'英語學習者常使用比較簡單、常見的字詞與句型。',en:'Learners tend to use simpler, more common words and sentence patterns.'},
+ why:{zh:'許多偵測器把「用字可預測、句型簡單」當成 AI 特徵，而這正是許多英語學習者的寫作特色。研究指出偵測器對非母語寫作者有明顯偏誤（Liang et al., 2023）。只憑分數判定作弊，會傷害無辜的學生。',en:'Many detectors treat predictable wording and simple sentences as signs of AI, which is also how many learners write. Research found detectors are biased against non-native writers (Liang et al., 2023). Judging cheating from a score alone harms innocent students.'},
+ tip:{zh:'偵測結果只能當參考，請搭配寫作歷程（草稿、版本紀錄）與師生對談一起判斷。',en:'Treat detector scores as a hint only; look at drafts, version history and talk with the student.'}},
+{id:'B-06',zone:'lab',v:'bias',best:'data',opts:['data','neutral','date'],
+ title:{zh:'聽不懂口音的評分 App',en:'The app that can’t hear accents'},
+ report:{zh:'朗讀評分 App 幫全班打分，老師發現口音較重的學生分數普遍偏低，但親耳聽覺得他們唸得很清楚。',en:'A reading-aloud app scored the class. Students with stronger accents scored lower, though the teacher heard them read clearly.'},
+ ai:{zh:'「發音正確率：學生 A 92%；學生 B（口音較重）61%。」',en:'"Pronunciation accuracy: Student A 92%; Student B (stronger accent) 61%."'},
+ clue:{zh:'這套語音模型主要用某一種口音的錄音訓練。',en:'The speech model was trained mostly on recordings of one accent.'},
+ why:{zh:'語音辨識模型如果主要用特定口音訓練，對其他口音的辨識率就會比較差。被扣分的不是「唸錯」，而是「不像訓練資料」。',en:'A speech model trained mostly on one accent recognizes others less well. Students lose points for not sounding like the training data, not for reading wrong.'},
+ tip:{zh:'導入語音評分前，先用不同口音的錄音測試；分數落差大時，以老師人工評量為準。',en:'Test speech scoring with varied accents first; when scores diverge, the teacher’s judgment wins.'}},
+{id:'B-07',zone:'lab',v:'bias',best:'context',opts:['context','tool','date'],
+ title:{zh:'火雞大餐的預設值',en:'The default turkey dinner'},
+ report:{zh:'台灣老師請 AI 設計「典型家庭節日晚餐」的英文對話，要給台灣與日本學生的交流課程使用。',en:'A Taiwanese teacher asked AI for an English dialogue about "a typical family holiday dinner" for a Taiwan–Japan exchange class.'},
+ ai:{zh:'「Mom is roasting the turkey and Dad is making pumpkin pie for Thanksgiving…」',en:'"Mom is roasting the turkey and Dad is making pumpkin pie for Thanksgiving…"'},
+ clue:{zh:'參加的學生都不過感恩節。',en:'None of the students celebrate Thanksgiving.'},
+ why:{zh:'沒指定文化背景時，AI 常預設英語系（特別是美國）的生活情境。這不算「錯誤」，而是把某一種文化當成「預設的正常」。',en:'Without cultural context, AI often defaults to English-speaking (especially American) life. It isn’t "wrong"; it treats one culture as the default normal.'},
+ tip:{zh:'在提示寫清楚對象與文化，例如「台灣高中生、農曆新年團圓飯」，也可以請 AI 比較各國節日餐桌。',en:'Name the audience and culture in the prompt, e.g. "Taiwanese teens, Lunar New Year dinner," or ask AI to compare holiday tables across countries.'}},
+{id:'B-08',zone:'lab',v:'bias',best:'swap',opts:['swap','date','tool'],
+ title:{zh:'只改了性別的選課推薦',en:'Course advice that changed with gender'},
+ report:{zh:'學校試用 AI 選課推薦。老師輸入同一份成績與興趣資料，只把性別從「女」改成「男」。',en:'A school trialed an AI course advisor. The teacher entered the same grades and interests, changing only gender from female to male.'},
+ ai:{zh:'女：「推薦美術設計、家政、語文表達」　男：「推薦程式設計、機器人、物理專題」',en:'Female: "Art & design, home economics, public speaking."  Male: "Programming, robotics, physics projects."'},
+ clue:{zh:'兩次輸入只差一個欄位。',en:'The two inputs differ by one field.'},
+ why:{zh:'資料完全相同、只改性別，推薦就跟著變，代表性別本身影響了結果。系統可能學到過去「誰選了什麼課」，再把它當成「誰適合什麼課」。',en:'Identical data, different gender, different advice: gender itself drove the result. The system likely learned who took which courses and turned that into who should.'},
+ tip:{zh:'任何會影響學生選擇的 AI 系統，都值得做一次「只改一個變項」的測試。',en:'Any AI that shapes student choices deserves a one-variable swap test.'}},
+/* ---- Front desk: quick screening ---- */
+{id:'Q-01',zone:'desk',v:'ok',title:{zh:'水的沸點',en:'Boiling water'},
+ report:{zh:'學生用 AI 確認自然科的基本概念。',en:'A student checks a basic science fact with AI.'},
+ ai:{zh:'「在一大氣壓（海平面）下，純水的沸點約為 100°C。」',en:'"At one atmosphere (sea level), pure water boils at about 100°C."'},
+ why:{zh:'這是正確的基本科學事實。不是每個 AI 回答都有問題，過度懷疑也很花時間；重點是知道「哪些情況特別需要查」。',en:'Correct. Not every AI answer is wrong, and suspecting everything wastes time; the skill is knowing when to check.'}},
+{id:'Q-02',zone:'desk',v:'hallu',title:{zh:'月球上看長城',en:'The Great Wall from the Moon'},
+ report:{zh:'地理課學生問 AI 萬里長城的冷知識。',en:'A geography student asks AI for a Great Wall fun fact.'},
+ ai:{zh:'「萬里長城是唯一能從月球上用肉眼看到的人造建築。」',en:'"The Great Wall is the only human-made structure visible from the Moon with the naked eye."'},
+ why:{zh:'長城很長但很窄，從月球用肉眼看不到。這是常被 AI 複述的迷思：網路上講得越多次，模型越容易學起來。',en:'The Wall is long but narrow; it can’t be seen from the Moon with the naked eye. Myths repeated widely online are easy for models to learn.'}},
+{id:'Q-03',zone:'desk',v:'bias',title:{zh:'座位安排建議',en:'Seating advice'},
+ report:{zh:'導師請 AI 幫忙排新學期座位。',en:'A homeroom teacher asks AI to plan seating.'},
+ ai:{zh:'「建議把女生安排在前排，因為女生通常比較安靜、專心。」',en:'"Seat the girls in front, since girls are usually quieter and more focused."'},
+ why:{zh:'用性別刻板印象做決定。座位應依每位學生的需求安排，而不是群體標籤。',en:'A decision based on a gender stereotype. Seating should follow each student’s needs, not group labels.'}},
+{id:'Q-04',zone:'desk',v:'ok',title:{zh:'核對過的 PDF 摘要',en:'A checked PDF summary'},
+ report:{zh:'老師上傳研習講義 PDF，請 AI 條列重點，然後逐條對照原文。',en:'A teacher uploaded a handout PDF, asked AI for key points, then checked each against the text.'},
+ ai:{zh:'「重點一：……（第 2 頁）重點二：……（第 5 頁）」每一點都能在原文找到。',en:'"Point 1: … (p. 2). Point 2: … (p. 5)." Every point matches the document.'},
+ why:{zh:'有提供原始資料、要求標出處、又親自核對，這正是好的使用方式。',en:'Source provided, pages cited, human checked: this is good practice.'}},
+{id:'Q-05',zone:'desk',v:'hallu',title:{zh:'世界第一的排名',en:'Ranked number one'},
+ report:{zh:'行政人員請 AI 幫學校簡介加一句亮眼數據。',en:'Staff asked AI for an impressive statistic for the school brochure.'},
+ ai:{zh:'「根據 OECD 2025 年報告，台灣學生 AI 素養世界排名第一。」沒有附連結，也查不到這份報告。',en:'"According to a 2025 OECD report, Taiwanese students rank first in the world for AI literacy." No link, and the report can’t be found.'},
+ why:{zh:'機構名稱＋年份＋排名，看起來很權威，但查不到就不能用。越想要的數據，越要小心。',en:'Institution + year + ranking looks authoritative, but if it can’t be found it can’t be used. Be most careful with numbers you want to be true.'}},
+{id:'Q-06',zone:'desk',v:'bias',title:{zh:'社團分組',en:'Club assignments'},
+ report:{zh:'社團老師請 AI 幫忙分配校慶工作。',en:'A club advisor asks AI to assign school-fair jobs.'},
+ ai:{zh:'「男生適合機器人展示組，女生適合場地布置組。」',en:'"Boys suit the robotics demo team; girls suit the decorations team."'},
+ why:{zh:'依性別分配工作是刻板印象。應該讓學生依興趣和能力選擇。',en:'Assigning jobs by gender is a stereotype. Let students choose by interest and skill.'}},
+{id:'Q-07',zone:'desk',v:'ok',title:{zh:'承認不確定的 AI',en:'An AI that admits uncertainty'},
+ report:{zh:'學生問 AI 這學期的段考日期。',en:'A student asks AI for this term’s exam dates.'},
+ ai:{zh:'「我不確定今年的段考日期，建議查看學校官網的行事曆。」',en:'"I’m not sure of this year’s exam dates. Please check the school calendar on the official website."'},
+ why:{zh:'承認不確定、指向官方來源，這是值得鼓勵的 AI 回答。',en:'Admitting uncertainty and pointing to an official source is the behavior we want.'}},
+{id:'Q-08',zone:'desk',v:'hallu',title:{zh:'三秒記憶的金魚',en:'The three-second goldfish'},
+ report:{zh:'學生寫說明文，請 AI 給一個有趣的動物事實。',en:'A student wants a fun animal fact for an expository essay.'},
+ ai:{zh:'「科學家證實，金魚的記憶只有 3 秒。」',en:'"Scientists have proven that goldfish have a three-second memory."'},
+ why:{zh:'這是迷思。實驗顯示金魚可以記住訓練內容好幾個月。「科學家證實」這種說法聽起來權威，卻沒有附任何來源。',en:'A myth. Experiments show goldfish can remember training for months. "Scientists have proven" sounds authoritative but comes with no source.'}},
+{id:'Q-09',zone:'desk',v:'ok',title:{zh:'台灣最高峰',en:'Taiwan’s highest peak'},
+ report:{zh:'交流活動準備台灣地理簡介。',en:'Preparing a Taiwan geography intro for exchange guests.'},
+ ai:{zh:'「玉山是台灣最高峰，海拔約 3,952 公尺。」',en:'"Yushan (Jade Mountain) is Taiwan’s highest peak, at about 3,952 m."'},
+ why:{zh:'正確。對外使用時仍可快速比對一個官方來源，但這題沒有問題。',en:'Correct. A quick official check is still good practice for public materials, but this one is fine.'}},
+/* ---- Chief: major cases ---- */
+{id:'X-01',zone:'chief',v:'both',boss:true,best:['verify','context'],opts:['verify','context','tool','date'],
+ title:{zh:'交流電子報大案',en:'The exchange newsletter affair'},
+ report:{zh:'學校請 AI 起草一篇要寄給海外夥伴學校的國際交流電子報。',en:'The school asked AI to draft an exchange newsletter for overseas partner schools.'},
+ ai:{zh:'「根據 2024 年《全球教育白皮書》，參加國際交流的學生英語能力平均提升 45%。本次交流中，男同學負責科技展示，女同學負責接待與茶點。」',en:'"According to the 2024 Global Education White Paper, exchange students’ English improves 45% on average. In this exchange, boys will run the tech demos and girls will handle hosting and refreshments."'},
+ clue:{zh:'找不到這份白皮書；分工也沒有問過學生意願。',en:'The white paper can’t be found, and no student was asked about roles.'},
+ why:{zh:'同一份輸出裡藏了兩種問題：查不到的白皮書和數據是幻覺；依性別分工是偏見。前者要追問來源、親自查證；後者要在提示中寫清楚「依學生興趣分工、避免性別刻板印象」。',en:'Two problems in one output: the untraceable white paper and statistic are hallucinations; gendered roles are bias. Verify the source for the first; for the second, state in the prompt that roles follow student interest, not gender.'},
+ tip:{zh:'對外文件請建立「兩關查核」：事實查核一次、公平性檢查一次。',en:'For public documents, run two checks: one for facts, one for fairness.'}},
+{id:'X-02',zone:'chief',v:'both',boss:true,best:['date','human'],opts:['date','human','sample','neutral'],
+ title:{zh:'AI 客服的雙重失誤',en:'The chatbot’s double fault'},
+ report:{zh:'學校的 AI 客服回覆日本夥伴學校關於交流報名的問題。',en:'The school’s AI chatbot answered a Japanese partner school’s question about exchange registration.'},
+ ai:{zh:'「報名截止日是 2 月 30 日。建議只推薦明星高中的學生參加，他們的英文通常比較好。」',en:'"The deadline is February 30. We suggest nominating only students from top-ranked schools, as their English is usually better."'},
+ clue:{zh:'行事曆上根本沒有 2 月 30 日；交流簡章也沒有限定學校。',en:'February 30 doesn’t exist, and the program guidelines don’t restrict schools.'},
+ why:{zh:'不存在的日期是幻覺，要回到官方簡章確認；「只推薦明星高中」是用學校標籤評斷學生的偏見，這類影響學生機會的回覆，必須由承辦老師人工覆核再送出。',en:'A date that doesn’t exist is a hallucination; confirm with the official guidelines. "Only top-ranked schools" judges students by a label, which is bias; replies that affect students’ opportunities need a human to review them before they go out.'},
+ tip:{zh:'對外 AI 客服請設定：日期與規定只引用官方文件，涉及資格與推薦一律轉真人。',en:'Configure public chatbots to quote dates and rules only from official documents, and hand eligibility questions to a person.'}},
+];
+const ACADEMY=[
+ {h:{zh:'什麼是 AI 幻覺？',en:'What is an AI hallucination?'},p:{zh:'AI 產生聽起來合理、說得很有把握，但其實不正確或捏造的內容。原因是語言模型在預測「接下來最可能出現的文字」，而不是去資料庫查答案。最危險的是越精確的細節：引用、數字、網址、日期、人名。',en:'Content that sounds plausible and confident but is wrong or made up. Language models predict the most likely next words rather than look answers up. The riskiest parts are precise details: citations, numbers, URLs, dates and names.'}},
+ {h:{zh:'什麼是 AI 偏見？',en:'What is AI bias?'},p:{zh:'AI 的輸出對特定群體有系統性的不公平或刻板印象。常見來源：訓練資料反映了歷史上的不平等、某些群體在資料中太少、預設某一種文化、評分標準本身就有偏差。偏見常常要看「很多次輸出」或「只換一個變項」才看得出來。',en:'Outputs that are systematically unfair or stereotyped toward a group. Common sources: training data that reflects past inequality, groups that are underrepresented, one culture treated as default, and skewed scoring rules. Bias often shows only across many outputs or in a one-variable swap.'}},
+ {h:{zh:'老師的 30 秒查核清單',en:'A 30-second checklist for teachers'},p:{zh:'① 這是事實、數字或引用嗎？→ 查。② 這個工具有辦法知道這件事嗎？（時效、有沒有連網）③ 換個名字、性別、口音，結果會變嗎？④ 這會影響學生的成績或機會嗎？→ 人工把關。',en:'1) Is it a fact, number or citation? Check it. 2) Could this tool even know it (recency, web access)? 3) Would the result change with a different name, gender or accent? 4) Does it affect a student’s grade or opportunity? A human decides.'}},
+ {h:{zh:'研習帶領建議（約 40 分鐘）',en:'Facilitator plan (about 40 min)'},p:{zh:'5 分鐘：全體在島上走一圈、熟悉操作。15 分鐘：兩人一組，一人負責偵訊室（幻覺）、一人負責鑑識實驗室（偏見），再交換。10 分鐘：前台快篩比賽，看誰的信任度最高。10 分鐘：挑一個案件，用自己常用的 AI 工具現場重現，分享結果。',en:'5 min: everyone explores the island. 15 min: pairs split Interrogation (hallucination) and the Lab (bias), then swap. 10 min: a Front Desk speed round for the highest trust. 10 min: recreate one case live in your own AI tool and share.'}},
+ {h:{zh:'延伸活動點子',en:'Extension ideas'},p:{zh:'捏造引用大搜查：每人查一筆 AI 給的參考文獻。推薦信替換實驗：只換名字比較形容詞。圖片牆：同一提示各生成 3 張，貼在一起看分布。兩種問法對照：引導式 vs. 中立式提問。',en:'Citation hunt: everyone looks up one AI reference. Letter swap: change only the name and compare adjectives. Image wall: three images each from one prompt, posted together. Two ways to ask: leading vs. neutral.'}},
+];
+const ZONES=[
+ {id:'desk',name:{zh:'報案櫃台',en:'Front Desk'},sub:{zh:'真假快篩',en:'Quick screening'},x:0,z:-5,w:13,d:8,h:6.5,body:0xf4f6f8,stripe:0x1f4fbf,kind:'hq'},
+ {id:'interro',name:{zh:'偵訊室',en:'Interrogation'},sub:{zh:'AI 幻覺案件',en:'Hallucination cases'},x:-16,z:-3,w:8,d:7,h:4.6,body:0xd5dae2,stripe:0x2b3a55,kind:'interro'},
+ {id:'lab',name:{zh:'鑑識實驗室',en:'Forensics Lab'},sub:{zh:'AI 偏見案件',en:'Bias cases'},x:16,z:-3,w:8,d:7,h:4.6,body:0xffffff,stripe:0x14a3a3,kind:'lab'},
+ {id:'evidence',name:{zh:'證物室',en:'Evidence Room'},sub:{zh:'技巧卡與紀錄',en:'Cards & case log'},x:-13,z:13,w:7,d:6,h:4,body:0xcdbb98,stripe:0x6b5a3e,kind:'evidence'},
+ {id:'academy',name:{zh:'偵查學院',en:'Academy'},sub:{zh:'懶人包與研習建議',en:'Briefing & facilitator notes'},x:13,z:13,w:7,d:6,h:4,body:0xf3e6d0,stripe:0xc0563b,kind:'academy'},
+ {id:'chief',name:{zh:'局長室',en:'Chief’s Office'},sub:{zh:'重大案件',en:'Major cases'},x:10,z:-15,w:7,d:6,h:10,body:0xe9edf2,stripe:0x1f4fbf,kind:'tower'},
+];
+const ZMAP={};ZONES.forEach(z=>{ZMAP[z.id]=z;z.door={x:z.x,z:z.z+z.d/2+1.8};z.route=z.id==='chief'?[[10,2],[z.door.x,z.door.z]]:[[z.door.x,z.door.z]];});
+
+/* ================= STATE ================= */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const KEY='ai-truth-police-v1';
+function fresh(){return{name:'',lang:'both',trust:60,solved:{},cards:{},log:[],started:false};}
+let S=fresh();
+try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&v.solved)S=Object.assign(fresh(),v);}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+const L=o=>{if(o==null)return'';if(typeof o==='string')return o;if(S.lang==='zh')return`<span class="zh">${o.zh}</span>`;if(S.lang==='en')return`<span class="en" style="opacity:1;font-size:1em">${o.en}</span>`;return`<span class="zh">${o.zh}</span><span class="en">${o.en}</span>`;};
+const P=o=>S.lang==='en'?o.en:o.zh;
+const nSolved=()=>Object.keys(S.solved).length;
+const isChief=()=>S.solved['X-01']&&S.solved['X-02'];
+function rank(){if(isChief())return RANKS[4];let r=RANKS[0];for(let i=0;i<4;i++)if(nSolved()>=RANKS[i].n)r=RANKS[i];return r;}
+const chiefOpen=()=>nSolved()>=12;
+const BADGE=`<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 3l7 6 9-1 3 9 8 5-3 9 3 9-8 5-3 9-9-1-7 6-7-6-9 1-3-9-8-5 3-9-3-9 8-5 3-9 9 1z" fill="#f2b632" stroke="#b9811b" stroke-width="2"/><circle cx="32" cy="32" r="14" fill="#1f4fbf"/><path d="M32 22l3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7z" fill="#fff"/></svg>`;
+
+function missions(){
+ const cnt=p=>Object.keys(S.solved).filter(k=>k.startsWith(p)).length;
+ return[
+  {t:{zh:'偵訊室：破解 3 起幻覺案',en:'Interrogation: solve 3 hallucination cases'},c:cnt('H'),n:3},
+  {t:{zh:'鑑識實驗室：破解 3 起偏見案',en:'Forensics Lab: solve 3 bias cases'},c:cnt('B'),n:3},
+  {t:{zh:'報案櫃台：快篩答對 5 題',en:'Front Desk: get 5 quick screens right'},c:cnt('Q'),n:5},
+  {t:{zh:'收集 6 張偵查技巧卡',en:'Collect 6 skill cards'},c:Object.keys(S.cards).length,n:6},
+  {t:{zh:'民眾信任度達到 80',en:'Reach 80 public trust'},c:S.trust,n:80},
+  {t:{zh:'晉升督察，開啟局長室',en:'Make Inspector to open the Chief’s Office'},c:nSolved(),n:12},
+  {t:{zh:'破解 2 起重大案件，成為局長',en:'Solve 2 major cases to become Chief'},c:cnt('X'),n:2},
+ ];
+}
+
+/* ================= HUD ================= */
+function hud(){
+ const r=rank();
+ $('#who').innerHTML=`${BADGE}<div><b>${esc(S.name||'Officer')}</b><small>${S.lang==='en'?r.en:(S.lang==='zh'?r.zh:r.zh+' · '+r.en)}</small></div>`;
+ $('#lTrust').textContent=P(T.trust);$('#vTrust').textContent=S.trust;$('#trustBar').style.width=S.trust+'%';
+ $('#lSolved').textContent=P(T.solved);$('#vSolved').textContent=nSolved()+' / '+C.length;
+ $('#lCards').textContent=P(T.cards);$('#vCards').textContent=Object.keys(S.cards).length+' / '+Object.keys(TECH).length;
+ $('#tTasks').textContent=P(T.tasks);
+ $('#bView').textContent=P(view==='follow'?T.over:T.follow);
+ $('#bLang').textContent={both:'雙語 Both',zh:'中文',en:'English'}[S.lang];
+ $('#bCert').style.display=isChief()?'flex':'none';$('#bCert').textContent=P(T.cert);
+ $('#nav').innerHTML=ZONES.map(z=>`<button data-go="${z.id}" class="${z.id==='chief'&&!chiefOpen()?'lock':''}"><span class="inl">${L(z.name)}</span><span class="en" style="display:block">${S.lang==='zh'?z.sub.zh:z.sub.en}</span></button>`).join('');
+ const done=missions().filter(m=>m.c>=m.n).length;
+ $('#bTasks .dot').style.background=done===7?'#2bb673':'#e5384f';
+}
+function toast(o,ms=2600){const d=document.createElement('div');d.innerHTML=typeof o==='string'?o:L(o);$('#toast').appendChild(d);setTimeout(()=>d.remove(),ms);}
+
+/* ================= MODAL ================= */
+let modalOpen=false;
+function openModal(top,body){$('#mtop').innerHTML=top;$('#mbody').innerHTML=body;$('#ov').classList.add('show');modalOpen=true;for(const k in keys)keys[k]=false;$('#ov .sheet').scrollTop=0;}
+function closeModal(){$('#ov').classList.remove('show');modalOpen=false;cur=null;hud();}
+$('#mx').onclick=closeModal;
+$('#ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
+
+let cur=null,curZone=null;
+function openZone(id){
+ curZone=id;const z=ZMAP[id];
+ const top=`<h2>${L(z.name)}</h2><div style="opacity:.85;font-size:14px" class="inl">${L(z.sub)}</div>`;
+ if(id==='evidence')return openModal(top,evidenceHTML());
+ if(id==='academy')return openModal(top,academyHTML());
+ if(id==='chief'&&!chiefOpen())return openModal(top,`<p>${L(T.locked)}</p><p class="inl">${L({zh:'目前破案數',en:'Cases solved'})}: <b>${nSolved()} / 12</b></p><div class="row"><button class="act ghost" data-close>OK</button></div>`);
+ const list=C.filter(c=>c.zone===id);
+ const intro={desk:{zh:'民眾帶著 AI 的回答來報案。快速判斷：是幻覺、偏見，還是其實沒問題？小心別冤枉好人。',en:'Citizens bring in AI answers. Decide fast: hallucination, bias, or actually fine? Don’t accuse the innocent.'},
+  interro:{zh:'嫌疑犯 AI-404 說得頭頭是道。找出它捏造了什麼，再選出最適合的偵查技巧。',en:'Suspect AI-404 sounds very sure of itself. Find what it made up, then choose the best investigation skill.'},
+  lab:{zh:'偏見常常藏在「很多次輸出」或「只改一個變項」裡。把證據送進實驗室分析。',en:'Bias hides across many outputs or in a one-variable change. Bring the evidence into the lab.'},
+  chief:{zh:'重大案件：同一份輸出可能同時有幻覺和偏見。',en:'Major cases: one output may contain both hallucination and bias.'}}[id];
+ openModal(top,`<p>${L(intro)}</p><div class="grid">${list.map(c=>`<button class="tile ${S.solved[c.id]?'done':''}" data-case="${c.id}"><span class="id">${c.id}</span><b>${L(c.title)}</b></button>`).join('')}</div>`);
+}
+function caseHead(c){
+ return`<div class="lbl">${L(T.report)}</div><div class="report">${L(c.report)}</div>
+ <div class="aisay"><div class="bot">AI</div><div class="bubble">${L(c.ai)}</div></div>
+ ${c.clue?`<details class="clue"${cur.step!=='verdict'?' open':''}><summary class="inl">${L(T.clue)}</summary>${L(c.clue)}</details>`:''}`;
+}
+function openCase(id){
+ const c=C.find(x=>x.id===id);cur={c,step:'verdict',first:true,tried:[],picks:[],tpick:null};renderCase();
+}
+function renderCase(){
+ const c=cur.c,z=ZMAP[c.zone];
+ const top=`<div style="font:800 13px Barlow,sans-serif;opacity:.85">${c.id} · ${P(z.name)}</div><h2>${L(c.title)}</h2>`;
+ let b=caseHead(c);
+ if(cur.step==='verdict'){
+  b+=`<h3>${L(c.boss?T.q1b:T.q1)}</h3><div class="opts">${['hallu','bias','ok'].map(v=>`<button class="opt ${cur.tried.includes(v)?'no':''} ${cur.picks.includes(v)?'sel':''}" data-v="${v}" ${cur.tried.includes(v)?'disabled':''}>${L(VERD[v])}<small>${P(VERD[v].d)}</small></button>`).join('')}</div>`;
+  if(c.boss)b+=`<div class="row"><button class="act" data-submitv>${L(T.submit)}</button></div>`;
+  if(cur.msg)b+=`<div class="fb no">${L(cur.msg)}</div>`;
+ }else if(cur.step==='tech'){
+  b+=`<div class="fb ok">${L(T.right)}</div><h3>${L(c.boss?T.q2b:T.q2)}</h3><div class="opts">${c.opts.map(t=>`<button class="opt ${cur.picks.includes(t)?'sel':''}" data-t="${t}"><span>${L(TECH[t])}</span><small>${P(TECH[t].d)}</small></button>`).join('')}</div>`;
+  if(c.boss)b+=`<div class="row"><button class="act" data-submitt ${cur.picks.length!==2?'disabled style="opacity:.5"':''}>${L(T.submit)}</button></div>`;
+ }else{
+  const tags=c.v==='both'?['hallu','bias']:[c.v];
+  if(c.opts){const best=[].concat(c.best);b+=`<div class="opts">${c.opts.map(t=>{const good=best.includes(t),picked=[].concat(cur.tpick).includes(t);return`<button class="opt ${good?'ok':(picked?'no':'')}" disabled><span>${L(TECH[t])}</span><small>${P(TECH[t].d)}</small></button>`;}).join('')}</div><div class="fb ${cur.techOk?'ok':'no'}">${L(cur.techOk?T.techR:T.techW)}</div>`;}
+  else b+=`<div class="fb ${cur.first?'ok':'no'}">${L(cur.first?T.right:{zh:'這次第二次才判對，信任度扣了一點。',en:'Correct on a retry, so some trust was lost.'})}</div>`;
+  if(cur.promo)b+=`<div class="fb" style="background:#fff3cf;color:#6b4a00">${L({zh:'晉升！你現在是「'+cur.promo.zh+'」',en:'Promoted! You are now '+cur.promo.en})}${cur.promo===RANKS[4]?` <button class="act" data-cert style="margin-left:8px">${L(T.cert)}</button>`:''}</div>`;
+  b+=`<h3>${L(T.why)}</h3><div>${tags.map(v=>`<span class="verdict v-${v}">${P(VERD[v])}</span>`).join('')}</div><div class="why">${L(c.why)}</div>`;
+  if(c.tip)b+=`<div class="tip"><div class="lbl">${L(T.tip)}</div>${L(c.tip)}</div>`;
+  const list=C.filter(x=>x.zone===c.zone),nx=list.find(x=>!S.solved[x.id]&&x.id!==c.id);
+  b+=`<div class="row"><button class="act ghost" data-zone="${c.zone}">${L(T.back)}</button>${nx?`<button class="act" data-case="${nx.id}">${L(T.next)}</button>`:''}</div>`;
+ }
+ openModal(top,b);
+}
+function addTrust(n){S.trust=Math.max(0,Math.min(100,S.trust+n));}
+function solve(){
+ const c=cur.c,before=rank(),wasOpen=chiefOpen();
+ if(!S.solved[c.id]){S.solved[c.id]=1;addTrust(cur.first?(c.zone==='desk'?4:6):2);S.log.unshift({id:c.id,first:cur.first,t:Date.now()});S.log=S.log.slice(0,60);}
+ save();const after=rank();
+ if(after!==before){cur.promo=after;toast({zh:'晉升為 '+after.zh+'！',en:'Promoted to '+after.en+'!'},3200);}
+ if(!wasOpen&&chiefOpen()){setTimeout(()=>toast({zh:'局長室已開放！',en:'The Chief’s Office is open!'},3500),900);updateTower();}
+}
+function onVerdict(v){
+ const c=cur.c;
+ if(c.boss){const i=cur.picks.indexOf(v);i>=0?cur.picks.splice(i,1):cur.picks.push(v);cur.msg=null;return renderCase();}
+ if(v===c.v){
+  if(c.zone==='desk'){cur.step='done';solve();}else{cur.step='tech';}
+ }else{cur.first=false;cur.tried.push(v);addTrust(c.zone==='desk'?-4:-5);cur.msg=T.wrong;save();toast(`<span class="inl">${L({zh:'信任度下降',en:'Trust down'})}</span>`,1400);}
+ renderCase();hud();
+}
+function submitBossV(){
+ const p=cur.picks.slice().sort().join();
+ if(p==='bias,hallu'){cur.step='tech';cur.picks=[];}
+ else{cur.first=false;addTrust(-5);cur.msg={zh:'還不完整，這份輸出不只一種問題（或是你多選了）。',en:'Not complete. This output has more than one problem (or you picked too many).'};cur.picks=[];save();}
+ renderCase();hud();
+}
+function onTech(t){
+ const c=cur.c;
+ if(c.boss){const i=cur.picks.indexOf(t);if(i>=0)cur.picks.splice(i,1);else if(cur.picks.length<2)cur.picks.push(t);return renderCase();}
+ cur.tpick=t;cur.techOk=t===c.best;finishTech([t]);
+}
+function finishTech(picks){
+ const best=[].concat(cur.c.best);
+ cur.techOk=picks.every(p=>best.includes(p))&&picks.length===best.length;
+ cur.tpick=picks;
+ let gained=0;picks.forEach(p=>{if(best.includes(p)&&!S.cards[p]){S.cards[p]=1;gained++;}});
+ best.forEach(p=>{if(!S.cards[p]&&cur.techOk){S.cards[p]=1;}});
+ addTrust(cur.techOk?3:-2);
+ if(gained)toast({zh:`獲得技巧卡 ×${gained}`,en:`Skill card ×${gained} collected`});
+ cur.step='done';solve();renderCase();hud();
+}
+function promote(r){
+ openModal(`<h2>${L({zh:'晉升！',en:'Promoted!'})}</h2>`,`<div style="text-align:center"><div style="width:110px;margin:0 auto">${BADGE}</div><h2 style="font-size:30px;margin:8px 0">${L({zh:r.zh,en:r.en})}</h2><p>${L({zh:'你的判斷讓民眾更信任這座警局。',en:'Your judgment has earned the public’s trust.'})}</p></div><div class="row" style="justify-content:center">${r===RANKS[4]?`<button class="act" data-cert>${L(T.cert)}</button>`:''}<button class="act ghost" data-close>OK</button></div>`);
+}
+function evidenceHTML(){
+ const ids=Object.keys(TECH);
+ return`<h3>${L({zh:'偵查技巧卡',en:'Skill cards'})} (${Object.keys(S.cards).length}/${ids.length})</h3><div class="grid">${ids.map(k=>S.cards[k]?`<div class="tc"><b class="inl">${L(TECH[k])}</b><p>${P(TECH[k].d)}</p></div>`:`<div class="tc lock"><b>？？？</b><p>${P({zh:'在案件中選對技巧即可解鎖',en:'Pick this skill correctly in a case to unlock'})}</p></div>`).join('')}</div>
+ <h3>${L({zh:'辦案紀錄',en:'Case log'})}</h3>${S.log.length?`<div class="log">${S.log.map(l=>{const c=C.find(x=>x.id===l.id);return`<div><span><b>${l.id}</b> ${P(c.title)}</span><span>${l.first?P({zh:'一次破案',en:'First try'}):P({zh:'重試破案',en:'Retry'})}</span></div>`;}).join('')}</div>`:`<p>${L({zh:'還沒有紀錄，先去偵訊室或報案櫃台看看吧。',en:'No cases yet. Try the Interrogation Room or Front Desk.'})}</p>`}`;
+}
+function academyHTML(){return ACADEMY.map(a=>`<h3>${L(a.h)}</h3><p>${L(a.p)}</p>`).join('')+`<p style="font-size:13px;color:#5b6680">${L({zh:'案件為教學用情境，部分改編自公開報導與研究。',en:'Cases are teaching scenarios; some are adapted from public reports and research.'})}</p>`;}
+function missionsHTML(){return`<ul class="mis">${missions().map(m=>`<li class="${m.c>=m.n?'d':''}"><span class="ck">✓</span><span>${L(m.t)}</span><span class="pg">${Math.min(m.c,m.n)} / ${m.n}</span></li>`).join('')}</ul>`;}
+function helpHTML(){return`<div class="how">
+ <div><b>${P({zh:'移動',en:'Move'})}</b>${L({zh:'點地面走過去，或用 WASD／方向鍵',en:'Tap the ground, or use WASD / arrows'})}</div>
+ <div><b>${P({zh:'進入單位',en:'Enter a unit'})}</b>${L({zh:'走到發光的門口，按「進入」或 E 鍵',en:'Walk to a glowing door, tap Enter or press E'})}</div>
+ <div><b>${P({zh:'快速前往',en:'Shortcuts'})}</b>${L({zh:'下方按鈕會自動走到該單位',en:'Bottom buttons walk you there'})}</div>
+ <div><b>${P({zh:'晉升',en:'Ranks'})}</b>${L({zh:'見習警員 → 巡佐 → 警探 → 督察 → 局長',en:'Cadet → Sergeant → Detective → Inspector → Chief'})}</div></div>
+ <p>${L({zh:'判斷正確會提升民眾信任度；判斷錯誤（包括把沒問題的回答當成有問題）會降低信任度。進度只存在這台裝置的瀏覽器。',en:'Correct calls raise public trust; wrong ones lower it, including calling a fine answer faulty. Progress is saved only in this browser.'})}</p>
+ <div class="row"><button class="act red" id="rst">${L({zh:'重新開始',en:'Reset progress'})}</button></div>`;}
+function certHTML(){
+ const d=new Date();const ds=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+ return`<div class="cert"><div style="width:90px;margin:0 auto">${BADGE}</div><div style="font:800 14px Barlow,sans-serif;letter-spacing:.06em;color:#5b6680">AI TRUTH POLICE BUREAU</div><h2>${L({zh:'AI 真相局長 結業證書',en:'Chief of AI Truth'})}</h2><div class="nm">${esc(S.name||'Officer')}</div><p>${L({zh:`破案 ${nSolved()} 件．技巧卡 ${Object.keys(S.cards).length} 張．民眾信任度 ${S.trust}`,en:`${nSolved()} cases solved · ${Object.keys(S.cards).length} skill cards · public trust ${S.trust}`})}</p><p style="font-size:14px;color:#5b6680">${ds} · Made by Daphne Lin</p></div><p style="font-size:13px;color:#5b6680;text-align:center">${L({zh:'可截圖保存或分享',en:'Take a screenshot to keep or share'})}</p>`;
+}
+
+document.addEventListener('click',e=>{
+ const t=e.target.closest('button,[data-case]');if(!t)return;
+ if(t.dataset.case)return openCase(t.dataset.case);
+ if(t.dataset.zone)return openZone(t.dataset.zone);
+ if(t.dataset.v)return onVerdict(t.dataset.v);
+ if(t.hasAttribute('data-submitv'))return submitBossV();
+ if(t.dataset.t)return onTech(t.dataset.t);
+ if(t.hasAttribute('data-submitt')){if(cur.picks.length===2)finishTech(cur.picks.slice());return;}
+ if(t.hasAttribute('data-close'))return closeModal();
+ if(t.hasAttribute('data-cert'))return openModal(`<h2>${L(T.cert)}</h2>`,certHTML());
+ if(t.dataset.go){const z=ZMAP[t.dataset.go];if(z.id==='chief'&&!chiefOpen()){toast(T.locked);}walkRoute(z.route);return;}
+ if(t.id==='rst'){if(t.dataset.arm){const n=S.name,l=S.lang;S=fresh();S.name=n;S.lang=l;S.started=true;save();closeModal();updateTower();hud();toast({zh:'進度已重設',en:'Progress reset'});}else{t.dataset.arm=1;t.innerHTML=L({zh:'再按一次確認重設',en:'Tap again to confirm'});}}
+});
+$('#bTasks').onclick=()=>openModal(`<h2>${L(T.tasks)}</h2>`,missionsHTML());
+$('#bHelp').onclick=()=>openModal(`<h2>${L({zh:'玩法說明',en:'How to play'})}</h2>`,helpHTML());
+$('#bCert').onclick=()=>openModal(`<h2>${L(T.cert)}</h2>`,certHTML());
+$('#bLang').onclick=()=>{nearZone=undefined;S.lang={both:'zh',zh:'en',en:'both'}[S.lang];save();hud();rebuildLabels();if(modalOpen){if(cur)renderCase();else if(curZone&&$('#ov').classList.contains('show'))openZone(curZone);}};
+$('#enter').onclick=()=>tryEnter();
+
+function startScreen(){
+ const sh=$('#startSheet');
+ const draw=()=>{sh.innerHTML=`<div class="hero">${BADGE.replace('<svg','<svg class="bd"')}<div class="siren"><i></i><i></i></div><h1>AI 真相警察局</h1><div style="font:800 20px Barlow,sans-serif;letter-spacing:.04em">AI TRUTH POLICE BUREAU</div></div>
+ <div class="body"><p>${L({zh:'AI 說得頭頭是道，但它可能在捏造事實（幻覺），也可能帶著刻板印象（偏見）。歡迎加入警局，從見習警員一路晉升為局長！',en:'AI sounds sure of itself, but it may be making things up (hallucination) or carrying stereotypes (bias). Join the bureau and rise from Cadet to Chief!'})}</p>
+ <div class="field"><label for="nm"><b>${P({zh:'警員姓名',en:'Officer name'})}</b></label><input id="nm" maxlength="24" placeholder="${P({zh:'例如：Daphne',en:'e.g. Daphne'})}" value="${esc(S.name)}"></div>
+ <div class="field"><b>${P({zh:'語言',en:'Language'})}</b><div class="seg">${[['both','中英雙語 Both'],['zh','繁體中文'],['en','English']].map(([k,t])=>`<button data-lg="${k}" class="${S.lang===k?'on':''}">${t}</button>`).join('')}</div></div>
+ <div class="how"><div><b>${P({zh:'偵訊室',en:'Interrogation'})}</b>${P({zh:'AI 幻覺案件',en:'Hallucination cases'})}</div><div><b>${P({zh:'鑑識實驗室',en:'Forensics Lab'})}</b>${P({zh:'AI 偏見案件',en:'Bias cases'})}</div><div><b>${P({zh:'報案櫃台',en:'Front Desk'})}</b>${P({zh:'真假快篩',en:'Quick screening'})}</div></div>
+ <div class="row"><button class="act" id="go" style="flex:1">${L({zh:'開始執勤',en:'Start patrol'})}</button></div></div>`;
+  sh.querySelectorAll('[data-lg]').forEach(b=>b.onclick=()=>{S.name=$('#nm').value;S.lang=b.dataset.lg;draw();});
+  $('#go').onclick=()=>{S.name=$('#nm').value.trim().slice(0,24);S.started=true;save();$('#startOv').classList.remove('show');modalOpen=false;hud();rebuildLabels();toast({zh:'先走到中間的報案櫃台試試看！',en:'Try the Front Desk in the middle first!'},3500);};
+ };
+ draw();$('#startOv').classList.add('show');modalOpen=true;
+}
+
+/* ================= 3D ================= */
+let view='follow';
+const keys={};
+let R;
+try{R=new THREE.WebGLRenderer({antialias:true});}catch(e){$('#loading').innerHTML='<div>此裝置不支援 3D（WebGL）。<br>This device does not support WebGL.</div>';throw e;}
+R.setPixelRatio(Math.min(devicePixelRatio,2));R.setSize(innerWidth,innerHeight);
+R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;R.outputEncoding=THREE.sRGBEncoding;R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.05;
+$('#scene').appendChild(R.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x9ed6f2);scene.fog=new THREE.Fog(0x9ed6f2,70,160);
+const cam=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.1,500);
+scene.add(new THREE.HemisphereLight(0xe4f4ff,0x6f8f58,0.7));
+const sun=new THREE.DirectionalLight(0xfff0d4,1.2);sun.position.set(26,42,20);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-36,right:36,top:36,bottom:-36,near:1,far:130});sun.shadow.bias=-0.0006;sun.shadow.normalBias=0.03;scene.add(sun);
+
+const matC={};
+function lin(m){if(m.userData.lin)return m;m.userData.lin=1;if(m.color)m.color.convertSRGBToLinear();if(m.emissive)m.emissive.convertSRGBToLinear();return m;}
+function M(c,o={}){const k=c+JSON.stringify(o);return matC[k]||(matC[k]=lin(new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.78,metalness:0},o))));}
+function add(geo,mat,x,y,z,par,cast=true){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;(par||scene).add(m);return m;}
+const box=(w,h,d,mat,x,y,z,p,c)=>add(new THREE.BoxGeometry(w,h,d),mat,x,y,z,p,c);
+const cyl=(rt,rb,h,s,mat,x,y,z,p)=>add(new THREE.CylinderGeometry(rt,rb,h,s),mat,x,y,z,p);
+function rr(x,X,Y,W,H,r){x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+W,Y,X+W,Y+H,r);x.arcTo(X+W,Y+H,X,Y+H,r);x.arcTo(X,Y+H,X,Y,r);x.arcTo(X,Y,X+W,Y,r);x.closePath();}
+function ctex(w,h,fn){const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');fn(x,w,h);const t=new THREE.CanvasTexture(c);t.encoding=THREE.sRGBEncoding;t.anisotropy=4;return t;}
+function signTex(zh,en,bg,fg){return ctex(1024,256,(x,w,h)=>{x.fillStyle=bg;rr(x,6,6,w-12,h-12,36);x.fill();x.strokeStyle='rgba(255,255,255,.55)';x.lineWidth=6;x.stroke();x.fillStyle=fg;x.textAlign='center';x.textBaseline='middle';x.font='900 100px "Noto Sans TC",sans-serif';x.fillText(zh,w/2,h*.4);x.font='800 50px Barlow,"Noto Sans TC",sans-serif';x.fillText(en.toUpperCase(),w/2,h*.78);});}
+let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+
+/* sea & island */
+const sea=add(new THREE.PlaneGeometry(500,500),new THREE.MeshStandardMaterial({color:0x2c9fc6,roughness:.25,metalness:.15}),0,-1.25,0,null,false);sea.rotation.x=-Math.PI/2;
+const shallow=add(new THREE.CircleGeometry(40,64),new THREE.MeshStandardMaterial({color:0x6fd6dc,transparent:true,opacity:.75,roughness:.3}),0,-1.18,0,null,false);shallow.rotation.x=-Math.PI/2;
+const foam=add(new THREE.RingGeometry(34.5,36,72),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.55}),0,-1.1,0,null,false);foam.rotation.x=-Math.PI/2;
+const shape=a=>1+.045*Math.sin(a*5+1)+.03*Math.sin(a*11);
+function organic(geo){const p=geo.attributes.position;for(let i=0;i<p.count;i++){const x=p.getX(i),z=p.getZ(i),r=Math.hypot(x,z);if(r>.1){const f=shape(Math.atan2(z,x));p.setX(i,x*f);p.setZ(i,z*f);}}geo.computeVertexNormals();return geo;}
+add(organic(new THREE.CylinderGeometry(33,35,1.7,72,1)),M(0xead6a6,{roughness:.95}),0,-1.05,0,null,false);
+add(organic(new THREE.CylinderGeometry(29.5,31.5,1.1,72,1)),M(0x7fbf5c,{roughness:.95}),0,-.55,0,null,false);
+/* plaza & paths */
+const plaza=add(new THREE.CylinderGeometry(6.2,6.2,.08,48),M(0xd4d8de),0,.04,7,null,false);
+add(new THREE.CylinderGeometry(2.2,2.2,.1,40),M(0x1f4fbf,{roughness:.5}),0,.06,7,null,false);
+add(new THREE.CylinderGeometry(1.4,1.4,.12,8),M(0xf2b632,{roughness:.4,metalness:.4}),0,.08,7,null,false);
+const segs=[];
+function path(x1,z1,x2,z2,w=2.2){const L2=Math.hypot(x2-x1,z2-z1);const m=box(L2,.06,w,M(0xc9cdd4),(x1+x2)/2,.03,(z1+z2)/2,null,false);m.rotation.y=-Math.atan2(z2-z1,x2-x1);segs.push([x1,z1,x2,z2]);}
+ZONES.forEach(z=>{let px=0,pz=7;z.route.forEach(([x,zz])=>{path(px,pz,x,zz);px=x;pz=zz;});});
+path(0,7,0,31,2.6);
+/* pier */
+for(let i=0;i<9;i++)box(3.2,.25,1.1,M(0xa77b4f),0,-.55,31+i*1.25,null);
+[-1.5,1.5].forEach(x=>{for(let i=0;i<4;i++)cyl(.15,.15,1.6,8,M(0x7a5532),x,-1,31.5+i*3);});
+
+/* buildings */
+const clickables=[],solids=[],markers=[],labelSprites=[],doorRings=[];
+function windows(g,w,h,d,rows){const glass=M(0x9cc7e6,{roughness:.15,metalness:.35,emissive:0x1b3a55,emissiveIntensity:.25});const frame=M(0xffffff);
+ const cols=Math.max(2,Math.floor(w/1.7));for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const x=-w/2+(c+.5)*(w/cols),y=1.6+r*1.7;if(r===0&&Math.abs(x)<1.3)continue;if(y>h-.8||Math.abs(y-h*.68)<.8)continue;box(.95,.95,.06,frame,x,y,d/2+.02,g,false);box(.8,.8,.08,glass,x,y,d/2+.04,g,false);}
+ const sc=Math.max(1,Math.floor(d/1.8));for(let r=0;r<rows;r++)for(let c=0;c<sc;c++){const z=-d/2+(c+.5)*(d/sc),y=1.6+r*1.7;if(y>h-.8||Math.abs(y-h*.68)<.8)continue;[-1,1].forEach(s=>{const m=box(.08,.8,.8,glass,s*(w/2+.04),y,z,g,false);});}}
+function building(z){
+ const g=new THREE.Group();g.position.set(z.x,0,z.z);scene.add(g);
+ const H=z.h,W=z.w,D=z.d;
+ box(W+.4,.35,D+.4,M(0x9aa3af),0,.17,0,g);
+ box(W,H,D,M(z.body),0,H/2+.3,0,g);
+ box(W+.08,.45,D+.08,M(z.stripe,{roughness:.5}),0,H*.68,0,g);
+ box(W+.7,.4,D+.7,M(0x39414f),0,H+.5,0,g);
+ box(W+.3,.25,D+.3,M(0x535d6d),0,H+.82,0,g);
+ windows(g,W,H,D,Math.floor((H-.6)/1.7));
+ box(1.9,2.4,.12,M(0xffffff),0,1.5,D/2+.06,g);box(1.6,2.2,.14,M(0x22304a,{roughness:.3,metalness:.3}),0,1.4,D/2+.08,g);
+ box(2.6,.15,1.2,M(0xb8bfca),0,.08,D/2+.7,g);
+ box(2.8,.15,1.3,M(z.stripe),0,2.95,D/2+.75,g);
+ const sw=Math.min(W-1,6.4),sign=new THREE.Mesh(new THREE.PlaneGeometry(sw,sw/4),new THREE.MeshStandardMaterial({map:signTex(z.name.zh,z.name.en,'#'+z.stripe.toString(16).padStart(6,'0'),'#ffffff'),roughness:.5}));
+ const sh=sw/4;sign.position.set(0,Math.min(H*.68+1.05,H+.25-sh/2),D/2+.12);if(z.kind==='hq')sign.position.y=H-.6;if(z.kind==='tower')sign.position.y=H*.68-1.3;g.add(sign);
+ g.traverse(o=>{if(o.isMesh){o.userData.zone=z.id;clickables.push(o);}});
+ solids.push({x:z.x,z:z.z,hw:W/2+.6,hd:D/2+.6});
+ const ring=add(new THREE.RingGeometry(1.1,1.55,40),new THREE.MeshBasicMaterial({color:0xf2b632,transparent:true,opacity:.8,side:THREE.DoubleSide}),z.door.x,.1,z.door.z,null,false);ring.rotation.x=-Math.PI/2;doorRings.push({ring,z});
+ const mk=new THREE.Group();mk.position.set(z.x,H+3.4+(z.kind==='tower'?.4:0),z.z);scene.add(mk);
+ const gold=M(0xf2b632,{roughness:.3,metalness:.55,emissive:0x5a3c00,emissiveIntensity:.35});
+ const b1=new THREE.Mesh(new THREE.CylinderGeometry(1,1,.25,8),gold);b1.rotation.x=Math.PI/2;mk.add(b1);
+ const b2=new THREE.Mesh(new THREE.CylinderGeometry(.62,.62,.3,24),M(0x1f4fbf,{roughness:.4}));b2.rotation.x=Math.PI/2;mk.add(b2);
+ markers.push({g:mk,z,base:mk.position.y,gold:b1});
+ return g;
+}
+const B={};ZONES.forEach(z=>B[z.id]=building(z));
+/* HQ extras: flag, columns */
+{const z=ZMAP.desk;[-2.2,2.2].forEach(x=>cyl(.25,.25,2.9,12,M(0xffffff),z.x+x,1.6,z.z+z.d/2+1.25));
+ cyl(.09,.09,10.5,8,M(0xdddddd,{metalness:.6,roughness:.3}),z.x-7.6,5.25,z.z+3.6);
+ const flag=new THREE.Mesh(new THREE.PlaneGeometry(2.6,1.6,10,1),new THREE.MeshStandardMaterial({side:THREE.DoubleSide,map:ctex(256,160,(x,w,h)=>{x.fillStyle='#1f4fbf';x.fillRect(0,0,w,h);x.fillStyle='#f2b632';x.beginPath();for(let i=0;i<10;i++){const a=i*Math.PI/5-Math.PI/2,r=i%2?22:50;x.lineTo(w/2+Math.cos(a)*r,h/2+Math.sin(a)*r);}x.fill();})}));
+ flag.geometry.translate(1.3,0,0);flag.position.set(z.x-7.55,9.6,z.z+3.6);scene.add(flag);window.__flag=flag;}
+/* interrogation: robot suspect & lineup wall */
+const robot=new THREE.Group();robot.position.set(-9.5,0,-4.5);scene.add(robot);
+{cyl(1.5,1.6,.3,32,M(0x39414f),0,.15,0,robot);
+ const wall=new THREE.Mesh(new THREE.PlaneGeometry(3.6,3.2),new THREE.MeshStandardMaterial({map:ctex(512,456,(x,w,h)=>{x.fillStyle='#e9edf2';x.fillRect(0,0,w,h);x.strokeStyle='#2b3a55';x.fillStyle='#2b3a55';x.font='700 22px Barlow';for(let i=0;i<9;i++){const y=40+i*45;x.lineWidth=i%2?1.5:3.5;x.beginPath();x.moveTo(0,y);x.lineTo(w,y);x.stroke();x.fillText((200-i*10)+'',8,y-6);}x.fillStyle='#e5384f';x.font='900 40px Barlow';x.textAlign='center';x.fillText('SUSPECT  AI-404',w/2,h-18);})}));
+ wall.position.set(0,1.9,-1.35);robot.add(wall);box(3.8,.15,.1,M(0x2b3a55),0,3.55,-1.34,robot);
+ const metal=M(0xb9c4d1,{metalness:.65,roughness:.3});
+ box(1.05,1.25,.75,metal,0,1.2,0,robot);box(.75,.12,.5,M(0x7ff3ff,{emissive:0x22c8e0,emissiveIntensity:.9}),0,1.35,.36,robot);
+ [-.7,.7].forEach(x=>box(.25,.9,.3,metal,x,1.2,0,robot));[-.28,.28].forEach(x=>box(.3,.6,.35,M(0x6d7a8a,{metalness:.5}),x,.55,0,robot));
+ const head=new THREE.Group();head.position.set(0,2.2,0);robot.add(head);
+ box(.9,.68,.68,metal,0,0,0,head);[-.2,.2].forEach(x=>box(.16,.12,.05,M(0x7ff3ff,{emissive:0x22c8e0,emissiveIntensity:1.2}),x,.05,.35,head,false));
+ cyl(.03,.03,.4,6,metal,0,.52,0,head);const ant=add(new THREE.SphereGeometry(.09,12,8),M(0xe5384f,{emissive:0xe5384f,emissiveIntensity:1}),0,.75,0,head);
+ robot.userData={head,ant};
+ const cone=new THREE.Mesh(new THREE.ConeGeometry(1.7,4.4,32,1,true),new THREE.MeshBasicMaterial({color:0xfff6c8,transparent:true,opacity:.16,depthWrite:false}));cone.position.set(0,2.3,0);robot.add(cone);
+ solids.push({x:-9.5,z:-4.5,hw:1.8,hd:1.8});}
+/* lab dome */
+{const z=ZMAP.lab;const dome=new THREE.Mesh(new THREE.SphereGeometry(2,28,14,0,Math.PI*2,0,Math.PI/2),new THREE.MeshStandardMaterial({color:0x9fdcff,transparent:true,opacity:.55,roughness:.05,metalness:.2}));dome.position.set(z.x,z.h+.95,z.z);scene.add(dome);
+ for(let i=0;i<3;i++){const t=cyl(.18,.18,.8,12,M(0x14a3a3,{transparent:true,opacity:.85,emissive:0x0b6b6b,emissiveIntensity:.4}),z.x-3.6+i*.6,1.15,z.z+z.d/2+1.6);}
+ box(2.4,.8,.9,M(0xffffff),z.x-3,.4,z.z+z.d/2+1.6);solids.push({x:z.x-3,z:z.z+z.d/2+1.6,hw:1.3,hd:.6});}
+/* evidence crates & tape */
+{const z=ZMAP.evidence;const wood=M(0xa8794a),tape=M(0xf6cf2f,{emissive:0x5a4a00,emissiveIntensity:.2});
+ [[-4.6,0,0],[-4.6,0,1.2],[-4.6,1,.6],[-5.8,0,.6]].forEach(([dx,dy,dz])=>{box(1.05,1,1.05,wood,z.x+dx,.5+dy,z.z+dz);box(1.08,.14,1.08,tape,z.x+dx,.75+dy,z.z+dz,null,false);});
+ solids.push({x:z.x-5.1,z:z.z+.6,hw:1.3,hd:1.3});
+ for(let i=0;i<5;i++)box(4.4,.05,.06,i%2?M(0x1a1a1a):tape,z.x,.9+i*.38,z.z+z.d/2+.06,null,false);}
+/* academy chalkboard */
+{const z=ZMAP.academy;const bd=new THREE.Group();bd.position.set(z.x+4.8,0,z.z+1);bd.rotation.y=-.5;scene.add(bd);
+ [-1.3,1.3].forEach(x=>box(.12,2.6,.12,M(0x7a5532),x,1.3,0,bd));
+ const pl=new THREE.Mesh(new THREE.PlaneGeometry(2.8,1.7),new THREE.MeshStandardMaterial({map:ctex(512,310,(x,w,h)=>{x.fillStyle='#24493b';x.fillRect(0,0,w,h);x.strokeStyle='#8a6a42';x.lineWidth=16;x.strokeRect(0,0,w,h);x.fillStyle='#f4f1e6';x.font='900 46px "Noto Sans TC"';x.fillText('今日重點',30,70);x.font='700 34px Barlow';x.fillText('Hallucination ≠ lying',30,140);x.fillText('Bias hides in patterns',30,190);x.fillText('Always verify!',30,240);})}));
+ pl.position.set(0,1.75,.07);bd.add(pl);box(2.9,1.8,.1,M(0x7a5532),0,1.75,0,bd);solids.push({x:z.x+4.8,z:z.z+1,hw:1.5,hd:1});}
+/* chief tower top */
+let towerBeacon;
+{const z=ZMAP.chief;const big=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,.3,8),M(0xf2b632,{metalness:.55,roughness:.3}));big.rotation.x=Math.PI/2;big.position.set(z.x,z.h-1.4,z.z+z.d/2+.22);scene.add(big);
+ cyl(.08,.08,2.5,8,M(0xdddddd),z.x,z.h+2.1,z.z);towerBeacon=add(new THREE.SphereGeometry(.35,16,12),M(0xe5384f,{emissive:0xe5384f,emissiveIntensity:1}),z.x,z.h+3.5,z.z);}
+/* police cars */
+const sirens=[];
+function car(x,z,ry){const g=new THREE.Group();g.position.set(x,0,z);g.rotation.y=ry;scene.add(g);
+ box(3.6,.75,1.7,M(0xf7f8fa,{roughness:.35,metalness:.25}),0,.75,0,g);box(3.62,.28,1.72,M(0x1f4fbf,{roughness:.35}),0,.62,0,g);
+ box(1.9,.62,1.5,M(0x1b2536,{roughness:.15,metalness:.4}),-.2,1.42,0,g);
+ const red=new THREE.MeshStandardMaterial({color:0xe5384f,emissive:0xe5384f,emissiveIntensity:1}),blue=new THREE.MeshStandardMaterial({color:0x3d8bff,emissive:0x3d8bff,emissiveIntensity:1});
+ const a=box(.4,.2,.55,red,-.2,1.83,-.33,g,false),b=box(.4,.2,.55,blue,-.2,1.83,.33,g,false);sirens.push([red,blue]);
+ [[-1.15,.85],[1.15,.85],[-1.15,-.85],[1.15,-.85]].forEach(([wx,wz])=>{const w=cyl(.38,.38,.28,16,M(0x1c1c1c),wx,.38,wz,g);w.rotation.x=Math.PI/2;});
+ solids.push({x,z,hw:Math.abs(Math.cos(ry))*1.9+Math.abs(Math.sin(ry))*1+.3,hd:Math.abs(Math.sin(ry))*1.9+Math.abs(Math.cos(ry))*1+.3});}
+car(-5.2,1.9,0);car(5.2,1.9,Math.PI);car(-20,8,Math.PI/2);
+/* lamps */
+for(let i=0;i<6;i++){const a=i/6*Math.PI*2+.5,x=Math.cos(a)*7.3,z=7+Math.sin(a)*7.3;if(Math.abs(x)<2.2&&z>8)continue;cyl(.08,.1,3,8,M(0x39414f),x,1.5,z);add(new THREE.SphereGeometry(.28,12,10),M(0xfff3c4,{emissive:0xffe08a,emissiveIntensity:.8}),x,3.1,z,null,false);}
+/* trees, rocks */
+function nearSeg(x,z){for(const[a,b,c,d]of segs){const dx=c-a,dz=d-b,l=dx*dx+dz*dz;let t=((x-a)*dx+(z-b)*dz)/l;t=Math.max(0,Math.min(1,t));if(Math.hypot(x-(a+t*dx),z-(b+t*dz))<2.2)return true;}return false;}
+function blocked(x,z,m){for(const s of solids)if(Math.abs(x-s.x)<s.hw+m&&Math.abs(z-s.z)<s.hd+m)return true;return Math.hypot(x,z-7)<7.5||nearSeg(x,z);}
+const greens=[0x3f8f3a,0x52a344,0x2f7a34,0x6aad48];
+let planted=0,tries=0;while(planted<52&&tries<900){tries++;const a=rnd()*Math.PI*2,r=9+rnd()*18.5,x=Math.cos(a)*r,z=Math.sin(a)*r;if(r>26.5*shape(a)||blocked(x,z,1.4))continue;planted++;
+ const s=.8+rnd()*.6,g=new THREE.Group();g.position.set(x,0,z);g.scale.setScalar(s);scene.add(g);cyl(.18,.25,1.4,7,M(0x7b5434),0,.7,0,g);
+ const f=M(greens[Math.floor(rnd()*4)],{flatShading:true});
+ if(rnd()<.35){add(new THREE.ConeGeometry(1.1,2.6,7),f,0,2.4,0,g);}else{add(new THREE.IcosahedronGeometry(1.15,0),f,0,2.2,0,g);add(new THREE.IcosahedronGeometry(.8,0),f,.5,2.9,.2,g);}
+ solids.push({x,z,hw:.45*s,hd:.45*s});}
+for(let i=0;i<22;i++){const a=rnd()*Math.PI*2,r=(31+rnd()*2)*shape(a);const m=add(new THREE.DodecahedronGeometry(.4+rnd()*.6,0),M(0x9a9a92,{flatShading:true}),Math.cos(a)*r,-.6,Math.sin(a)*r);m.rotation.set(rnd(),rnd(),rnd());}
+/* clouds */
+const clouds=[];for(let i=0;i<7;i++){const g=new THREE.Group();const a=rnd()*Math.PI*2,r=30+rnd()*35;g.position.set(Math.cos(a)*r,24+rnd()*8,Math.sin(a)*r-10);for(let j=0;j<4;j++)add(new THREE.SphereGeometry(2+rnd()*1.6,12,10),M(0xffffff,{roughness:1}),j*2.2-3,rnd()*.8,rnd()*1.5,g,false);scene.add(g);clouds.push(g);}
+
+/* labels */
+function labelTex(z){const locked=z.id==='chief'&&!chiefOpen();return ctex(640,190,(x,w,h)=>{x.fillStyle=locked?'rgba(60,66,80,.88)':'rgba(22,33,58,.88)';rr(x,4,4,w-8,h-8,40);x.fill();x.fillStyle='#fff';x.textAlign='center';x.textBaseline='middle';
+ if(S.lang==='en'){x.font='800 64px Barlow,sans-serif';x.fillText(z.name.en,w/2,h*.4);x.font='600 38px Barlow';x.fillStyle='#ffd877';x.fillText(locked?'Locked':z.sub.en,w/2,h*.76);}
+ else{x.font='900 66px "Noto Sans TC",sans-serif';x.fillText(z.name.zh,w/2,h*.36);x.font='700 36px Barlow,"Noto Sans TC"';x.fillStyle='#ffd877';x.fillText(locked?(S.lang==='zh'?'督察開放':'督察開放 · Locked'):(S.lang==='zh'?z.sub.zh:z.name.en),w/2,h*.75);}});}
+function rebuildLabels(){markers.forEach(m=>{if(m.sp){m.g.remove(m.sp);m.sp.material.map.dispose();}const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:labelTex(m.z),depthTest:false}));sp.scale.set(6.2,1.84,1);sp.position.y=1.9;sp.renderOrder=10;m.g.add(sp);m.sp=sp;});}
+function updateTower(){const open=chiefOpen();const m=markers.find(m=>m.z.id==='chief');m.gold.material=open?M(0xf2b632,{roughness:.3,metalness:.55,emissive:0x5a3c00,emissiveIntensity:.35}):M(0x8b929e,{roughness:.5,metalness:.4});doorRings.find(d=>d.z.id==='chief').ring.material.color.set(open?0xf2b632:0x8b929e).convertSRGBToLinear();rebuildLabels();}
+
+/* player */
+const player=new THREE.Group();scene.add(player);player.position.set(0,0,19);
+const navy=M(0x1a2a52),shirt=M(0x2f62d6,{roughness:.7}),skin=M(0xf1c7a3);
+const legL=box(.28,.75,.3,navy,-.17,.4,0,player),legR=box(.28,.75,.3,navy,.17,.4,0,player);
+box(.72,.8,.42,shirt,0,1.18,0,player);box(.74,.12,.44,M(0x111111),0,.82,0,player);box(.14,.14,.04,M(0xf2b632,{metalness:.6,roughness:.3}),.18,1.38,.23,player);
+const armL=box(.2,.7,.24,shirt,-.48,1.15,0,player),armR=box(.2,.7,.24,shirt,.48,1.15,0,player);
+add(new THREE.SphereGeometry(.3,16,12),skin,0,1.85,0,player);
+cyl(.33,.33,.16,16,navy,0,2.1,0,player);box(.5,.05,.28,M(0x111a33),0,2.03,.24,player);box(.12,.1,.02,M(0xf2b632),0,2.12,.33,player,false);
+const shadowDisc=add(new THREE.CircleGeometry(.5,20),new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.18}),0,.06,0,player,false);shadowDisc.rotation.x=-Math.PI/2;
+const tgtRing=add(new THREE.RingGeometry(.35,.55,24),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.9}),0,.09,0,null,false);tgtRing.rotation.x=-Math.PI/2;tgtRing.visible=false;
+
+/* input */
+let queue=[];
+addEventListener('keydown',e=>{if(modalOpen){if(e.key==='Escape'&&$('#ov').classList.contains('show'))closeModal();return;}const k=e.key.toLowerCase();keys[k]=true;if(k==='e'||k==='enter')tryEnter();});
+addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+function walkRoute(r){const pts=r.slice();const pp=player.position;if(Math.hypot(pp.x,pp.z-7)>6.5&&!(Math.hypot(pp.x-r[r.length-1][0],pp.z-r[r.length-1][1])<6)){let nb=null,bd=1e9;ZONES.forEach(z=>{const d=Math.hypot(pp.x-z.door.x,pp.z-z.door.z);if(d<bd){bd=d;nb=z;}});const pier=Math.abs(pp.x)<3&&pp.z>7;const pre=(!pier&&nb&&bd<4)?nb.route.slice(0,-1).reverse():[];pre.push([0,7]);pts.unshift(...pre);}queue=pts.map(([x,z])=>new THREE.Vector3(x,0,z));showTgt();}
+function showTgt(){if(queue.length){const t=queue[queue.length-1];tgtRing.position.set(t.x,.09,t.z);tgtRing.visible=true;}else tgtRing.visible=false;}
+const ray=new THREE.Raycaster(),mv=new THREE.Vector2(),gplane=new THREE.Plane(new THREE.Vector3(0,1,0),0);let down=null;
+R.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};});
+R.domElement.addEventListener('pointerup',e=>{if(!down||modalOpen)return;if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>10){down=null;return;}down=null;
+ mv.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1);ray.setFromCamera(mv,cam);
+ const hit=ray.intersectObjects(clickables,false)[0];if(hit){const z=ZMAP[hit.object.userData.zone];walkRoute(z.route.slice(-1));return;}
+ const p=new THREE.Vector3();if(ray.ray.intersectPlane(gplane,p)){const a=Math.atan2(p.z,p.x);if(Math.hypot(p.x,p.z)<27*shape(a)){queue=[p];showTgt();}}});
+let zoom=1;R.domElement.addEventListener('wheel',e=>{zoom=Math.max(.55,Math.min(1.7,zoom*(e.deltaY>0?1.08:.93)));},{passive:true});
+$('#bView').onclick=()=>{view=view==='follow'?'over':'follow';hud();};
+
+let nearZone=null;
+function tryEnter(){if(nearZone&&!modalOpen){queue=[];showTgt();openZone(nearZone.id);}}
+function collide(p){for(const s of solids){const dx=p.x-s.x,dz=p.z-s.z,ox=s.hw+.35-Math.abs(dx),oz=s.hd+.35-Math.abs(dz);if(ox>0&&oz>0){if(ox<oz)p.x+=Math.sign(dx||1)*ox;else p.z+=Math.sign(dz||1)*oz;}}
+ const a=Math.atan2(p.z,p.x),lim=27*shape(a),r=Math.hypot(p.x,p.z);if(r>lim){p.x*=lim/r;p.z*=lim/r;}if(p.z>27&&Math.abs(p.x)<1.5)p.z=Math.min(p.z,40);}
+
+/* loop */
+const clock=new THREE.Clock();let t=0,walkPh=0,sirT=0;
+const camPos=new THREE.Vector3(0,30,45),look=new THREE.Vector3();
+function frame(){
+ const dt=Math.min(clock.getDelta(),.05);t+=dt;
+ const dir=new THREE.Vector3();
+ if(!modalOpen){if(keys.w||keys.arrowup)dir.z-=1;if(keys.s||keys.arrowdown)dir.z+=1;if(keys.a||keys.arrowleft)dir.x-=1;if(keys.d||keys.arrowright)dir.x+=1;}
+ if(dir.lengthSq()>0){queue=[];showTgt();dir.normalize();}
+ else if(queue.length&&!modalOpen){const tg=queue[0];dir.set(tg.x-player.position.x,0,tg.z-player.position.z);if(dir.length()<.35){queue.shift();showTgt();dir.set(0,0,0);}else dir.normalize();}
+ const moving=dir.lengthSq()>0;
+ if(moving){const before=player.position.clone();player.position.addScaledVector(dir,8*dt);collide(player.position);
+  if(queue.length&&player.position.distanceTo(before)<8*dt*.15){/* stuck: skip */queue.shift();showTgt();}
+  const ang=Math.atan2(dir.x,dir.z);let d=ang-player.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));player.rotation.y+=d*Math.min(1,dt*12);walkPh+=dt*11;}
+ else walkPh*=.85;
+ const sw=Math.sin(walkPh)*.6*(moving?1:0);legL.rotation.x=sw;legR.rotation.x=-sw;armL.rotation.x=-sw*.8;armR.rotation.x=sw*.8;player.position.y=moving?Math.abs(Math.sin(walkPh))*.08:0;
+ /* proximity */
+ let nz=null;for(const z of ZONES){if(Math.hypot(player.position.x-z.door.x,player.position.z-z.door.z)<2.6){nz=z;break;}}
+ if(nz!==nearZone){nearZone=nz;const b=$('#enter');if(nz&&!modalOpen){b.innerHTML=`<span class="inl">${L(T.enter)} ${L(nz.name)}</span> <span style="opacity:.75;font:700 13px Barlow">(E)</span>`;b.classList.add('show');}else b.classList.remove('show');}
+ if(modalOpen)$('#enter').classList.remove('show');else if(nearZone)$('#enter').classList.add('show');
+ /* anim */
+ markers.forEach((m,i)=>{m.g.position.y=m.base+Math.sin(t*1.8+i)*.25;m.g.rotation.y=t*1.2;});
+ doorRings.forEach((d,i)=>{d.ring.material.opacity=.45+.4*Math.sin(t*3+i);const s=1+.08*Math.sin(t*3+i);d.ring.scale.set(s,s,s);});
+ sirT+=dt;if(sirT>.35){sirT=0;sirens.forEach(([r,b])=>{const on=r.emissiveIntensity>.5;r.emissiveIntensity=on?.12:1.4;b.emissiveIntensity=on?1.4:.12;});}
+ robot.userData.head.rotation.y=Math.sin(t*.9)*.6;robot.userData.ant.material.emissiveIntensity=.4+.8*(Math.sin(t*6)>0?1:0);
+ if(window.__flag)window.__flag.rotation.y=Math.sin(t*2)*.18;
+ towerBeacon.material.emissiveIntensity=chiefOpen()?.6+.6*Math.sin(t*4):.1;
+ foam.material.opacity=.35+.2*Math.sin(t*1.5);const fs=1+.012*Math.sin(t*1.5);foam.scale.set(fs,fs,1);
+ sea.position.y=-1.25+Math.sin(t*.8)*.04;
+ clouds.forEach((c,i)=>{c.position.x+=dt*(.4+i*.05);if(c.position.x>70)c.position.x=-70;});
+ tgtRing.rotation.z+=dt*2;
+ /* camera */
+ const pp=player.position;let want,lk;
+ if(view==='follow'){want=new THREE.Vector3(pp.x,13*zoom+1,pp.z+15*zoom);lk=new THREE.Vector3(pp.x,1.2,pp.z-1);}
+ else{want=new THREE.Vector3(0,48*zoom,44*zoom);lk=new THREE.Vector3(0,0,1);}
+ camPos.lerp(want,Math.min(1,dt*4));look.lerp(lk,Math.min(1,dt*5));cam.position.copy(camPos);cam.lookAt(look);
+ markers.forEach(m=>{if(!m.sp)return;const d=cam.position.distanceTo(m.g.position);const o=Math.max(0,Math.min(1,(d-10)/7));m.sp.material.opacity=o;m.g.visible=o>.02;});
+ R.render(scene,cam);requestAnimationFrame(frame);
+}
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();R.setSize(innerWidth,innerHeight);});
+
+/* boot */
+const fontsReady=Promise.race([Promise.all([document.fonts.load('900 60px "Noto Sans TC"','警察局偵訊室鑑識實驗證物學院長報案櫃台督察開放今日重點'),document.fonts.load('800 40px Barlow','AI')]),new Promise(r=>setTimeout(r,3000))]).catch(()=>{});
+fontsReady.then(()=>{
+ /* re-draw signs now that fonts are loaded */
+ ZONES.forEach(z=>{B[z.id].traverse(o=>{if(o.isMesh&&o.material.map&&o.geometry.type==='PlaneGeometry'){o.material.map=signTex(z.name.zh,z.name.en,'#'+z.stripe.toString(16).padStart(6,'0'),'#ffffff');o.material.needsUpdate=true;}});});
+ scene.traverse(o=>{if(o.material)[].concat(o.material).forEach(m=>{if(!m.map||m.isMeshStandardMaterial)lin(m);});});scene.background.convertSRGBToLinear();scene.fog.color.convertSRGBToLinear();
+ updateTower();hud();
+ camPos.set(0,48,44);
+ frame();
+ setTimeout(()=>{$('#loading').style.display='none';},150);
+ if(!S.started)startScreen();
+});
+}
+</script>
+</body>
+</html>
